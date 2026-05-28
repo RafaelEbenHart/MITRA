@@ -379,6 +379,7 @@ class _HomePageState extends ConsumerState<HomePage>
       child: Stack(
         fit: StackFit.expand,
         children: [
+          // ── PERUBAHAN 2: hapus overlay border scanner (kotak putih & sudut coklat) ──
           if (_isCameraOn)
             MobileScanner(
               controller: _scannerController,
@@ -386,25 +387,7 @@ class _HomePageState extends ConsumerState<HomePage>
             )
           else
             _buildCameraOffState(),
-          if (_isCameraOn)
-            Center(
-              child: Container(
-                width: 200,
-                height: 200,
-                decoration: BoxDecoration(
-                  border: Border.all(color: Colors.white24, width: 2),
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: Stack(
-                  children: [
-                    _buildCorner(Alignment.topLeft),
-                    _buildCorner(Alignment.topRight),
-                    _buildCorner(Alignment.bottomLeft),
-                    _buildCorner(Alignment.bottomRight),
-                  ],
-                ),
-              ),
-            ),
+          // Border scanner dihapus sepenuhnya dari sini
           Positioned(
             top: topPadding,
             right: 16,
@@ -478,36 +461,6 @@ class _HomePageState extends ConsumerState<HomePage>
     );
   }
 
-  Widget _buildCorner(Alignment alignment) {
-    return Align(
-      alignment: alignment,
-      child: Container(
-        width: 28,
-        height: 28,
-        decoration: BoxDecoration(
-          border: Border(
-            top: (alignment == Alignment.topLeft ||
-                    alignment == Alignment.topRight)
-                ? const BorderSide(color: Color(0xFF997950), width: 4)
-                : BorderSide.none,
-            bottom: (alignment == Alignment.bottomLeft ||
-                    alignment == Alignment.bottomRight)
-                ? const BorderSide(color: Color(0xFF997950), width: 4)
-                : BorderSide.none,
-            left: (alignment == Alignment.topLeft ||
-                    alignment == Alignment.bottomLeft)
-                ? const BorderSide(color: Color(0xFF997950), width: 4)
-                : BorderSide.none,
-            right: (alignment == Alignment.topRight ||
-                    alignment == Alignment.bottomRight)
-                ? const BorderSide(color: Color(0xFF997950), width: 4)
-                : BorderSide.none,
-          ),
-        ),
-      ),
-    );
-  }
-
   Widget _buildBottomPanel(BillingState state) {
     return Container(
       decoration: const BoxDecoration(
@@ -525,6 +478,7 @@ class _HomePageState extends ConsumerState<HomePage>
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
+                  // ── PERUBAHAN 3: label "Tab Penjualan" sejajar dengan "Item Terpindai" ──
                   if (state.currentTab != null)
                     Padding(
                       padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
@@ -669,7 +623,30 @@ class _HomePageState extends ConsumerState<HomePage>
       width: 120,
       child: Column(
         children: [
-          const SizedBox(height: 20),
+          // ── PERUBAHAN 1: label "Tab Penjualan" sejajar dengan "Item Terpindai" ──
+          // Tinggi header disesuaikan agar baseline-nya sama (padding top 14 + 2 line text ≈ sama)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(8, 14, 8, 8),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Tab Penjualan',
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  Text(
+                    '${state.tabs.length} tab aktif',
+                    style: const TextStyle(fontSize: 11, color: Colors.grey),
+                  ),
+                ],
+              ),
+            ),
+          ),
           Expanded(
             child: SingleChildScrollView(
               padding: const EdgeInsets.symmetric(horizontal: 8),
