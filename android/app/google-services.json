@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "529823316324",
+    "project_id": "kerja-proyek-6f4dc",
+    "storage_bucket": "kerja-proyek-6f4dc.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:529823316324:android:e161e42318da9a4ca3a271",
+        "android_client_info": {
+          "package_name": "com.example.billing_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCAgzVa5Ik5NswpwL-Weu1fplFrukJFuro"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

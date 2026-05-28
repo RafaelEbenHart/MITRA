@@ -1,0 +1,1 @@
+enum SalesReportMode { monthly, daily }
