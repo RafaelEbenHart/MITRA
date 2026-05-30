@@ -63,6 +63,22 @@ class _SalesReportPageState extends ConsumerState<SalesReportPage> {
     return receipt.totalQuantity;
   }
 
+  double _receiptDiscount(Receipt receipt) {
+    if (receipt.totalDiscount != null && receipt.totalDiscount! > 0) {
+      return receipt.totalDiscount!;
+    }
+    return receipt.items.fold<double>(0.0, (sum, item) {
+      final originalTotal = item.product.hargaSatuan * item.quantity.abs();
+      return sum + (originalTotal - item.subtotal);
+    });
+  }
+
+  double _receiptTax(Receipt receipt) {
+    final subtotal =
+        receipt.items.fold<double>(0.0, (sum, item) => sum + item.subtotal);
+    return subtotal * ((receipt.taxPercentage ?? 0.0) / 100);
+  }
+
   List<Map<String, dynamic>> _buildMonthlyReports(List<Receipt> receipts) {
     final grouped = <String, Map<String, dynamic>>{};
 
@@ -78,6 +94,8 @@ class _SalesReportPageState extends ConsumerState<SalesReportPage> {
         grouped[key]!['receiptCount'] += 1;
         grouped[key]!['quantity'] += quantity;
         grouped[key]!['revenue'] += revenue;
+        grouped[key]!['totalDiscount'] += _receiptDiscount(receipt);
+        grouped[key]!['totalTax'] += _receiptTax(receipt);
         grouped[key]!['receipts'].add(receipt);
       } else {
         grouped[key] = {
@@ -87,6 +105,8 @@ class _SalesReportPageState extends ConsumerState<SalesReportPage> {
           'receiptCount': 1,
           'quantity': quantity,
           'revenue': revenue,
+          'totalDiscount': _receiptDiscount(receipt),
+          'totalTax': _receiptTax(receipt),
           'receipts': [receipt],
         };
       }
@@ -118,6 +138,8 @@ class _SalesReportPageState extends ConsumerState<SalesReportPage> {
         grouped[key]!['receiptCount'] += 1;
         grouped[key]!['quantity'] += quantity;
         grouped[key]!['revenue'] += revenue;
+        grouped[key]!['totalDiscount'] += _receiptDiscount(receipt);
+        grouped[key]!['totalTax'] += _receiptTax(receipt);
         grouped[key]!['receipts'].add(receipt);
       } else {
         grouped[key] = {
@@ -127,6 +149,8 @@ class _SalesReportPageState extends ConsumerState<SalesReportPage> {
           'receiptCount': 1,
           'quantity': quantity,
           'revenue': revenue,
+          'totalDiscount': _receiptDiscount(receipt),
+          'totalTax': _receiptTax(receipt),
           'receipts': [receipt],
         };
       }
@@ -354,6 +378,82 @@ class _SalesReportPageState extends ConsumerState<SalesReportPage> {
                                                                           FontWeight
                                                                               .bold,
                                                                     ),
+                                                              ),
+                                                            ),
+                                                          ],
+                                                        ),
+                                                        TableRow(
+                                                          decoration:
+                                                              const BoxDecoration(
+                                                            color: Color(
+                                                                0xFFF9FAFB),
+                                                          ),
+                                                          children: [
+                                                            Padding(
+                                                              padding:
+                                                                  const EdgeInsets
+                                                                      .all(12),
+                                                              child: Text(
+                                                                'Total Diskon',
+                                                                style: Theme.of(
+                                                                        context)
+                                                                    .textTheme
+                                                                    .bodySmall,
+                                                              ),
+                                                            ),
+                                                            Padding(
+                                                              padding:
+                                                                  const EdgeInsets
+                                                                      .all(12),
+                                                              child: Text(
+                                                                formatIdr(item[
+                                                                        'totalDiscount']
+                                                                    as double),
+                                                                textAlign:
+                                                                    TextAlign
+                                                                        .right,
+                                                                style: Theme.of(
+                                                                        context)
+                                                                    .textTheme
+                                                                    .bodySmall,
+                                                              ),
+                                                            ),
+                                                          ],
+                                                        ),
+                                                        TableRow(
+                                                          decoration:
+                                                              const BoxDecoration(
+                                                            color: Color(
+                                                                0xFFF9FAFB),
+                                                          ),
+                                                          children: [
+                                                            Padding(
+                                                              padding:
+                                                                  const EdgeInsets
+                                                                      .all(12),
+                                                              child: Text(
+                                                                'Total Pajak',
+                                                                style: Theme.of(
+                                                                        context)
+                                                                    .textTheme
+                                                                    .bodySmall,
+                                                              ),
+                                                            ),
+                                                            Padding(
+                                                              padding:
+                                                                  const EdgeInsets
+                                                                      .all(12),
+                                                              child: Text(
+                                                                formatIdr(item[
+                                                                        'totalTax']
+                                                                    as double),
+                                                                textAlign:
+                                                                    TextAlign
+                                                                        .right,
+                                                                style: Theme.of(
+                                                                        context)
+                                                                    .textTheme
+                                                                    .bodySmall,
                                                               ),
                                                             ),
                                                           ],

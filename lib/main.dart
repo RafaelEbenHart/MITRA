@@ -5,10 +5,8 @@ import 'config/routes/app_routes.dart';
 import 'infrastruktur/penyimpanan/firebase_database.dart';
 import 'infrastruktur/injeksi/service_locator.dart' as di;
 import 'shared/tema/app_theme.dart';
-import 'modul/akses/tampilan/controllers/auth_provider.dart'
-    as auth_provider;
-import 'modul/toko/tampilan/controllers/shop_provider.dart'
-    as shop_provider;
+import 'modul/akses/tampilan/controllers/auth_provider.dart' as auth_provider;
+import 'modul/toko/tampilan/controllers/shop_provider.dart' as shop_provider;
 import 'modul/inventori/tampilan/controllers/product_provider.dart'
     as product_provider;
 
@@ -32,8 +30,13 @@ class _MyAppState extends ConsumerState<MyApp> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      ref.read(auth_provider.authNotifierProvider.notifier).checkCurrentUser();
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      // ← Pastikan auth siap lebih dulu sebelum load data lain
+      await ref
+          .read(auth_provider.authNotifierProvider.notifier)
+          .checkCurrentUser();
+
+      // Sekarang load shop dan products (user sudah authenticated)
       ref.read(shop_provider.shopNotifierProvider.notifier).loadShop();
       ref
           .read(product_provider.productNotifierProvider.notifier)
@@ -51,6 +54,3 @@ class _MyAppState extends ConsumerState<MyApp> {
     );
   }
 }
-
-
-

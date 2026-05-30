@@ -162,7 +162,7 @@ class _FilterDropdownState extends State<_FilterDropdown>
                                   ),
                                 ),
                                 if (isSelected)
-                                  Icon(Icons.check_rounded,
+                                  const Icon(Icons.check_rounded,
                                       size: 16, color: AppTheme.primaryColor),
                               ],
                             ),

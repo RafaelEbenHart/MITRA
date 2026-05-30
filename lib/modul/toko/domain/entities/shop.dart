@@ -6,6 +6,7 @@ class DataToko extends Equatable {
   final String alamatBaris2;
   final String nomorTelepon;
   final String pesanStruk;
+  final double taxPercentage;
 
   const DataToko({
     this.namaToko = '',
@@ -13,6 +14,7 @@ class DataToko extends Equatable {
     this.alamatBaris2 = '',
     this.nomorTelepon = '',
     this.pesanStruk = '',
+    this.taxPercentage = 11.0,
   });
 
   DataToko copyWith({
@@ -21,6 +23,7 @@ class DataToko extends Equatable {
     String? addressLine2,
     String? phoneNumber,
     String? footerText,
+    double? taxPercentage,
   }) {
     return DataToko(
       namaToko: name ?? this.namaToko,
@@ -28,10 +31,17 @@ class DataToko extends Equatable {
       alamatBaris2: addressLine2 ?? this.alamatBaris2,
       nomorTelepon: phoneNumber ?? this.nomorTelepon,
       pesanStruk: footerText ?? this.pesanStruk,
+      taxPercentage: taxPercentage ?? this.taxPercentage,
     );
   }
 
   @override
-  List<Object?> get props =>
-      [namaToko, alamatBaris1, alamatBaris2, nomorTelepon, pesanStruk];
+  List<Object?> get props => [
+        namaToko,
+        alamatBaris1,
+        alamatBaris2,
+        nomorTelepon,
+        pesanStruk,
+        taxPercentage,
+      ];
 }

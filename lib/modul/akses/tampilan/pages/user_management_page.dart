@@ -117,7 +117,7 @@ class _UserManagementPageState extends ConsumerState<UserManagementPage> {
                     ),
                     const SizedBox(height: 16),
                     Text(
-                      'Belum ada akun operasional',
+                      'Belum ada akun karyawan',
                       style: Theme.of(context).textTheme.titleLarge,
                     ),
                     const SizedBox(height: 8),
@@ -195,4 +195,3 @@ class _UserManagementPageState extends ConsumerState<UserManagementPage> {
     );
   }
 }
-

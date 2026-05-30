@@ -69,6 +69,9 @@ class ProductRepositoryImpl implements ProductRepository {
           batches: updatedBatches,
           latestCostPrice: product.latestCostPrice,
           latestCostPerUnit: product.latestCostPerUnit,
+          diskon: product.diskon,
+          diskonMulai: product.diskonMulai,
+          diskonSelesai: product.diskonSelesai,
         );
 
         await updateProduct(updatedProduct);

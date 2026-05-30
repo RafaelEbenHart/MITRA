@@ -20,7 +20,6 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   @override
   void initState() {
     super.initState();
-    // Re-initialize printer state whenever settings page opens
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(printerNotifierProvider.notifier).initPrinter();
     });
@@ -69,7 +68,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                   subtitle: 'Akses produk, tambah stok, dan tambah produk',
                   children: [
                     _buildListItem(
-                      icon: Icons.qr_code_scanner,
+                      icon: Icons.inventory,
                       title: 'Produk',
                       subtitle: 'Kelola stok dan barcode',
                       onTap: () => context.push('/products'),

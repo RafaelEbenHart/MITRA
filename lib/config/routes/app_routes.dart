@@ -8,6 +8,7 @@ import 'package:mitra/modul/inventori/tampilan/inventory_report_page.dart'
 import 'package:mitra/modul/inventori/tampilan/pages/product_list_page.dart';
 import 'package:mitra/modul/inventori/tampilan/pages/add_product_page.dart';
 import 'package:mitra/modul/inventori/tampilan/pages/edit_product_page.dart';
+import 'package:mitra/modul/inventori/tampilan/pages/barcode_scanner_page.dart';
 import 'package:mitra/modul/toko/tampilan/pages/shop_details_page.dart';
 import 'package:mitra/modul/pengaturan/tampilan/pages/settings_page.dart';
 import 'package:mitra/modul/kasir/tampilan/checkout_page.dart';
@@ -138,6 +139,10 @@ final router = GoRouter(
     GoRoute(
       path: '/settings',
       builder: (context, state) => const SettingsPage(),
+    ),
+    GoRoute(
+      path: '/scanner',
+      builder: (context, state) => const BarcodeScannerPage(),
     ),
     GoRoute(
       path: '/products',

@@ -6,6 +6,7 @@ import 'package:mitra/modul/inventori/domain/entities/product.dart';
 class InventoryState extends Equatable {
   final List<InvoiceItem> items;
   final Barang? searchedProduct;
+  final List<Barang> searchedProducts;
   final List<Invoice> invoiceHistory;
   final List<Receipt> salesReceipts;
   final bool isLoading;
@@ -15,6 +16,7 @@ class InventoryState extends Equatable {
   const InventoryState({
     required this.items,
     this.searchedProduct,
+    this.searchedProducts = const [],
     required this.invoiceHistory,
     this.salesReceipts = const [],
     this.isLoading = false,
@@ -25,6 +27,7 @@ class InventoryState extends Equatable {
   InventoryState copyWith({
     List<InvoiceItem>? items,
     Barang? searchedProduct,
+    List<Barang>? searchedProducts,
     List<Invoice>? invoiceHistory,
     List<Receipt>? salesReceipts,
     bool? isLoading,
@@ -34,6 +37,7 @@ class InventoryState extends Equatable {
     return InventoryState(
       items: items ?? this.items,
       searchedProduct: searchedProduct ?? this.searchedProduct,
+      searchedProducts: searchedProducts ?? this.searchedProducts,
       invoiceHistory: invoiceHistory ?? this.invoiceHistory,
       salesReceipts: salesReceipts ?? this.salesReceipts,
       isLoading: isLoading ?? this.isLoading,
@@ -50,6 +54,7 @@ class InventoryState extends Equatable {
   List<Object?> get props => [
         items,
         searchedProduct,
+        searchedProducts,
         invoiceHistory,
         salesReceipts,
         isLoading,

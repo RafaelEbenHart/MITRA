@@ -1,7 +1,7 @@
 import 'package:mitra/shared/komponen/mitra_text_field.dart';
-
 import 'package:mitra/shared/komponen/mitra_button.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../domain/entities/shop.dart';
@@ -22,6 +22,7 @@ class _ShopDetailsPageState extends ConsumerState<ShopDetailsPage> {
   late TextEditingController _address1Controller;
   late TextEditingController _phoneController;
   late TextEditingController _footerController;
+  late TextEditingController _taxPercentageController;
 
   @override
   void initState() {
@@ -30,6 +31,7 @@ class _ShopDetailsPageState extends ConsumerState<ShopDetailsPage> {
     _address1Controller = TextEditingController();
     _phoneController = TextEditingController();
     _footerController = TextEditingController();
+    _taxPercentageController = TextEditingController(text: '11');
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(shop_provider.shopNotifierProvider.notifier).loadShop();
@@ -42,6 +44,8 @@ class _ShopDetailsPageState extends ConsumerState<ShopDetailsPage> {
       _address1Controller.text = shop.alamatBaris1;
       _phoneController.text = shop.nomorTelepon;
       _footerController.text = shop.pesanStruk;
+      _taxPercentageController.text = shop.taxPercentage
+          .toStringAsFixed(shop.taxPercentage % 1 == 0 ? 0 : 2);
     }
   }
 
@@ -51,16 +55,22 @@ class _ShopDetailsPageState extends ConsumerState<ShopDetailsPage> {
     _address1Controller.dispose();
     _phoneController.dispose();
     _footerController.dispose();
+    _taxPercentageController.dispose();
     super.dispose();
   }
 
   void _saveShop() {
     if (_formKey.currentState!.validate()) {
+      final taxValue =
+          double.tryParse(_taxPercentageController.text.replaceAll(',', '.')) ??
+              0.0;
+
       final shop = DataToko(
         namaToko: _nameController.text,
         alamatBaris1: _address1Controller.text,
         nomorTelepon: _phoneController.text,
         pesanStruk: _footerController.text,
+        taxPercentage: taxValue.clamp(0.0, 100.0),
       );
 
       ref.read(shop_provider.shopNotifierProvider.notifier).updateShop(shop);
@@ -124,6 +134,7 @@ class _ShopDetailsPageState extends ConsumerState<ShopDetailsPage> {
                       controller: _nameController,
                       label: 'Nama Toko',
                       hint: 'TOKOKU',
+                      maxLength: 50,
                       validator: InputValidators.required('Wajib diisi'),
                     ),
                     const SizedBox(height: 15),
@@ -131,6 +142,8 @@ class _ShopDetailsPageState extends ConsumerState<ShopDetailsPage> {
                       controller: _address1Controller,
                       label: 'Alamat',
                       hint: 'JALAN RAYA NO. 123, JAKARTA',
+                      maxLength: 150,
+                      maxLines: 2,
                       validator: InputValidators.required('Wajib diisi'),
                     ),
                     const SizedBox(height: 15),
@@ -138,27 +151,37 @@ class _ShopDetailsPageState extends ConsumerState<ShopDetailsPage> {
                       controller: _phoneController,
                       label: 'Nomor Telepon',
                       hint: '08273xxxxxx',
+                      maxLength: 12,
                       keyboardType: TextInputType.phone,
                       validator: InputValidators.required('Wajib diisi'),
                     ),
                     const SizedBox(height: 15),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Padding(
-                          padding: EdgeInsets.only(left: 4, bottom: 8),
-                          child: Text('Teks Footer Struk',
-                              style: TextStyle(color: Color(0xFF4C669A))),
-                        ),
-                        Text('Maks 150 karakter',
-                            style: TextStyle(
-                                fontSize: 11, color: Colors.grey[400])),
+                    MitraTextField(
+                      controller: _taxPercentageController,
+                      label: 'PPN (%)',
+                      hint: '11',
+                      keyboardType:
+                          const TextInputType.numberWithOptions(decimal: true),
+                      inputFormatters: [
+                        FilteringTextInputFormatter.allow(
+                            RegExp(r'^(100(\.0{1,2})?|\d{1,2}(\.\d{1,2})?)?$')),
                       ],
+                      validator: (value) {
+                        if (value == null || value.isEmpty) {
+                          return 'Wajib diisi';
+                        }
+                        final tax = double.tryParse(value.replaceAll(',', '.'));
+                        if (tax == null || tax < 0 || tax > 100) {
+                          return 'Pajak harus antara 0 dan 100%';
+                        }
+                        return null;
+                      },
                     ),
+                    const SizedBox(height: 15),
                     MitraTextField(
                       controller: _footerController,
                       label: 'Teks Footer Struk',
-                      hint: 'Terima kasih, kunjungi lagi!!!',
+                      hint: 'Terima kasih, datang lagi!',
                       maxLines: 2,
                       maxLength: 60,
                     ),

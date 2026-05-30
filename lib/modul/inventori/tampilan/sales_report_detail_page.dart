@@ -1,5 +1,4 @@
 import 'dart:typed_data';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
@@ -62,6 +61,29 @@ class SalesReportDetailPage extends ConsumerWidget {
     });
   }
 
+  double _totalDiscount() {
+    return receipts.fold<double>(0.0, (sum, receipt) {
+      if (receipt.totalDiscount != null && receipt.totalDiscount! > 0) {
+        return sum + receipt.totalDiscount!;
+      }
+      return sum +
+          receipt.items.fold<double>(0.0, (itemSum, item) {
+            final originalTotal =
+                item.product.hargaSatuan * item.quantity.abs();
+            return itemSum + (originalTotal - item.subtotal);
+          });
+    });
+  }
+
+  double _totalTax() {
+    return receipts.fold<double>(0.0, (sum, receipt) {
+      final subtotal = receipt.items.fold<double>(0.0, (itemSum, item) {
+        return itemSum + item.subtotal;
+      });
+      return sum + subtotal * ((receipt.taxPercentage ?? 0.0) / 100);
+    });
+  }
+
   List<Map<String, dynamic>> _aggregateProductSales() {
     final aggregated = <String, Map<String, dynamic>>{};
 
@@ -69,18 +91,22 @@ class SalesReportDetailPage extends ConsumerWidget {
       for (final item in receipt.items) {
         final key = item.product.idBarang;
         final quantity = item.quantity.abs();
-        final revenue = item.product.hargaSatuan * quantity;
+        final originalTotal = item.product.hargaSatuan * quantity;
+        final discountedTotal = item.subtotal;
+        final discount = originalTotal - discountedTotal;
 
         if (aggregated.containsKey(key)) {
           aggregated[key]!['quantity'] += quantity;
-          aggregated[key]!['revenue'] += revenue;
+          aggregated[key]!['revenue'] += discountedTotal;
+          aggregated[key]!['discount'] += discount;
         } else {
           aggregated[key] = {
             'product': item.product,
             'quantity': quantity,
             'unitCost': item.product.latestCostPrice ?? 0.0,
             'unitPrice': item.product.hargaSatuan,
-            'revenue': revenue,
+            'revenue': discountedTotal,
+            'discount': discount,
           };
         }
       }
@@ -100,12 +126,18 @@ class SalesReportDetailPage extends ConsumerWidget {
     final dailyItems = <Map<String, dynamic>>[];
     for (final receipt in receipts) {
       for (final item in receipt.items) {
+        final quantity = item.quantity.abs();
+        final originalTotal = item.product.hargaSatuan * quantity;
+        final discountedTotal = item.subtotal;
+        final discount = originalTotal - discountedTotal;
+
         dailyItems.add({
           'product': item.product,
-          'quantity': item.quantity.abs(),
+          'quantity': quantity,
           'price': item.product.hargaSatuan,
+          'discount': discount,
           'createdBy': receipt.createdBy,
-          'subtotal': item.quantity.abs() * item.product.hargaSatuan,
+          'subtotal': discountedTotal,
         });
       }
     }
@@ -128,6 +160,9 @@ class SalesReportDetailPage extends ConsumerWidget {
         isMonthly ? _formatMonth(reportDate) : _formatFullDate(reportDate);
 
     final totalRevenue = _totalRevenue();
+    final totalDiscount = _totalDiscount();
+    final totalTax = _totalTax();
+    final subtotal = totalRevenue - totalTax;
 
     // Data tabel
     final headers = isMonthly
@@ -138,6 +173,7 @@ class SalesReportDetailPage extends ConsumerWidget {
             'Jumlah',
             'Satuan',
             'Harga Beli',
+            'Diskon',
             'Subtotal'
           ]
         : [
@@ -147,6 +183,7 @@ class SalesReportDetailPage extends ConsumerWidget {
             'Jumlah',
             'Satuan',
             'Harga Jual',
+            'Diskon',
             'Dilayani Oleh',
             'Subtotal'
           ];
@@ -158,10 +195,13 @@ class SalesReportDetailPage extends ConsumerWidget {
       for (int i = 0; i < aggregated.length; i++) {
         final item = aggregated[i];
         final p = item['product'] as Barang;
-        final qty = item['quantity'] as double;
+        final qty = (item['quantity'] as num).toDouble();
         final qtyStr =
             qty % 1 == 0 ? qty.toInt().toString() : qty.toStringAsFixed(2);
         final satuan = p.measureType == 'weight' ? 'kg' : 'pcs';
+        final unitCost = (item['unitCost'] as num?)?.toDouble() ?? 0.0;
+        final discount = (item['discount'] as num?)?.toDouble() ?? 0.0;
+        final revenue = (item['revenue'] as num?)?.toDouble() ?? 0.0;
 
         data.add([
           '${i + 1}',
@@ -169,8 +209,9 @@ class SalesReportDetailPage extends ConsumerWidget {
           p.kodeBarang,
           qtyStr,
           satuan,
-          formatIdr(item['unitCost'] as double),
-          formatIdr(item['revenue'] as double),
+          formatIdr(unitCost),
+          formatIdr(discount),
+          formatIdr(revenue),
         ]);
       }
     } else {
@@ -178,11 +219,14 @@ class SalesReportDetailPage extends ConsumerWidget {
       for (int i = 0; i < dailyItems.length; i++) {
         final item = dailyItems[i];
         final p = item['product'] as Barang;
-        final qty = item['quantity'] as double;
+        final qty = (item['quantity'] as num).toDouble();
         final qtyStr =
             qty % 1 == 0 ? qty.toInt().toString() : qty.toStringAsFixed(2);
         final satuan = p.measureType == 'weight' ? 'kg' : 'pcs';
         final createdBy = item['createdBy'] as String?;
+        final price = (item['price'] as num?)?.toDouble() ?? 0.0;
+        final discount = (item['discount'] as num?)?.toDouble() ?? 0.0;
+        final subtotal = (item['subtotal'] as num?)?.toDouble() ?? 0.0;
 
         data.add([
           '${i + 1}',
@@ -190,9 +234,10 @@ class SalesReportDetailPage extends ConsumerWidget {
           p.kodeBarang,
           qtyStr,
           satuan,
-          formatIdr(item['price'] as double),
+          formatIdr(price),
+          formatIdr(discount),
           createdBy?.isNotEmpty == true ? createdBy! : '-',
-          formatIdr(item['subtotal'] as double),
+          formatIdr(subtotal),
         ]);
       }
     }
@@ -285,7 +330,8 @@ class SalesReportDetailPage extends ConsumerWidget {
                       3: pw.Alignment.center, // Jumlah
                       4: pw.Alignment.center, // Satuan
                       5: pw.Alignment.centerRight, // Harga Beli
-                      6: pw.Alignment.centerRight, // Subtotal
+                      6: pw.Alignment.centerRight, // Diskon
+                      7: pw.Alignment.centerRight, // Subtotal
                     }
                   : {
                       0: pw.Alignment.center, // No
@@ -294,20 +340,21 @@ class SalesReportDetailPage extends ConsumerWidget {
                       3: pw.Alignment.center, // Jumlah
                       4: pw.Alignment.center, // Satuan
                       5: pw.Alignment.centerRight, // Harga Jual
-                      6: pw.Alignment.center, // Dilayani Oleh
-                      7: pw.Alignment.centerRight, // Subtotal
+                      6: pw.Alignment.centerRight, // Diskon
+                      7: pw.Alignment.center, // Dilayani Oleh
+                      8: pw.Alignment.centerRight, // Subtotal
                     },
               headers: headers,
               data: data,
             ),
             pw.SizedBox(height: 8),
 
-            // ── FOOTER TABEL: Total Pendapatan ──
+            // ── FOOTER TABEL: Total Pendapatan, Diskon, dan Pajak ──
             pw.Row(
               mainAxisAlignment: pw.MainAxisAlignment.end,
               children: [
                 pw.SizedBox(
-                  width: 200,
+                  width: 220,
                   child: pw.Table(
                     border:
                         pw.TableBorder.all(width: 0.5, color: PdfColors.black),
@@ -321,7 +368,72 @@ class SalesReportDetailPage extends ConsumerWidget {
                           pw.Padding(
                             padding: const pw.EdgeInsets.all(4),
                             child: pw.Text(
-                              'Total Pendapatan :',
+                              'Subtotal :',
+                              style: pw.TextStyle(
+                                  fontSize: 9, fontWeight: pw.FontWeight.bold),
+                              textAlign: pw.TextAlign.right,
+                            ),
+                          ),
+                          pw.Padding(
+                            padding: const pw.EdgeInsets.all(4),
+                            child: pw.Text(
+                              formatIdr(subtotal),
+                              style: const pw.TextStyle(fontSize: 9),
+                              textAlign: pw.TextAlign.right,
+                            ),
+                          ),
+                        ],
+                      ),
+                      pw.TableRow(
+                        decoration:
+                            const pw.BoxDecoration(color: PdfColors.grey200),
+                        children: [
+                          pw.Padding(
+                            padding: const pw.EdgeInsets.all(4),
+                            child: pw.Text(
+                              'Total Diskon :',
+                              style: const pw.TextStyle(fontSize: 9),
+                              textAlign: pw.TextAlign.right,
+                            ),
+                          ),
+                          pw.Padding(
+                            padding: const pw.EdgeInsets.all(4),
+                            child: pw.Text(
+                              formatIdr(totalDiscount),
+                              style: const pw.TextStyle(fontSize: 9),
+                              textAlign: pw.TextAlign.right,
+                            ),
+                          ),
+                        ],
+                      ),
+                      pw.TableRow(
+                        children: [
+                          pw.Padding(
+                            padding: const pw.EdgeInsets.all(4),
+                            child: pw.Text(
+                              'Total Pajak :',
+                              style: const pw.TextStyle(fontSize: 9),
+                              textAlign: pw.TextAlign.right,
+                            ),
+                          ),
+                          pw.Padding(
+                            padding: const pw.EdgeInsets.all(4),
+                            child: pw.Text(
+                              formatIdr(totalTax),
+                              style: const pw.TextStyle(fontSize: 9),
+                              textAlign: pw.TextAlign.right,
+                            ),
+                          ),
+                        ],
+                      ),
+                      pw.TableRow(
+                        decoration:
+                            const pw.BoxDecoration(color: PdfColors.grey300),
+                        children: [
+                          pw.Padding(
+                            padding: const pw.EdgeInsets.all(4),
+                            child: pw.Text(
+                              'Grand Total :',
                               style: pw.TextStyle(
                                   fontSize: 9, fontWeight: pw.FontWeight.bold),
                               textAlign: pw.TextAlign.right,
@@ -337,7 +449,7 @@ class SalesReportDetailPage extends ConsumerWidget {
                             ),
                           ),
                         ],
-                      )
+                      ),
                     ],
                   ),
                 ),
@@ -435,6 +547,14 @@ class SalesReportDetailPage extends ConsumerWidget {
                             totalQty % 1 == 0
                                 ? totalQty.toInt().toString()
                                 : totalQty.toStringAsFixed(2),
+                          ),
+                          _buildInfoChip(
+                            'Total Diskon',
+                            formatIdr(_totalDiscount()),
+                          ),
+                          _buildInfoChip(
+                            'Total Pajak',
+                            formatIdr(_totalTax()),
                           ),
                         ],
                       ),
@@ -552,6 +672,7 @@ class SalesReportDetailPage extends ConsumerWidget {
         DataColumn(label: Text('Jumlah')),
         DataColumn(label: Text('Satuan')),
         DataColumn(label: Text('Harga Beli')),
+        DataColumn(label: Text('Diskon')),
         DataColumn(label: Text('Subtotal')),
       ],
       rows: items.asMap().entries.map((entry) {
@@ -570,6 +691,7 @@ class SalesReportDetailPage extends ConsumerWidget {
           DataCell(Text(qtyStr)),
           DataCell(Text(satuan)),
           DataCell(Text(formatIdr(item['unitCost'] as double))),
+          DataCell(Text(formatIdr(item['discount'] as double))),
           DataCell(Text(formatIdr(item['revenue'] as double))),
         ]);
       }).toList(),
@@ -591,6 +713,7 @@ class SalesReportDetailPage extends ConsumerWidget {
         DataColumn(label: Text('Jumlah')),
         DataColumn(label: Text('Satuan')),
         DataColumn(label: Text('Harga Jual')),
+        DataColumn(label: Text('Diskon')),
         DataColumn(label: Text('Dilayani Oleh')),
         DataColumn(label: Text('Subtotal')),
       ],
@@ -611,6 +734,7 @@ class SalesReportDetailPage extends ConsumerWidget {
           DataCell(Text(qtyStr)),
           DataCell(Text(satuan)),
           DataCell(Text(formatIdr(item['price'] as double))),
+          DataCell(Text(formatIdr(item['discount'] as double))),
           DataCell(Text(createdBy?.isNotEmpty == true ? createdBy! : '-')),
           DataCell(Text(formatIdr(item['subtotal'] as double))),
         ]);

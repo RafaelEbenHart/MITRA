@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:uuid/uuid.dart';
@@ -11,6 +12,8 @@ import 'package:mitra/modul/inventori/tampilan/invoice_preview_page.dart';
 import 'package:mitra/modul/inventori/tampilan/invoice_list_page.dart';
 import 'package:mitra/modul/inventori/tampilan/controllers/product_provider.dart'
     as product_provider;
+import 'package:mitra/modul/akses/tampilan/controllers/auth_provider.dart'
+    as auth_provider;
 
 class AddStockPage extends ConsumerStatefulWidget {
   final Barang? initialProduct;
@@ -74,7 +77,13 @@ class _AddStockPageState extends ConsumerState<AddStockPage> {
 
     final notifier = ref.read(inventoryNotifierProvider.notifier);
     notifier.clearInvoice();
-    notifier.fetchInvoiceHistory();
+
+    // ← Tambahkan pengecekan auth sebelum fetch
+    final authState = ref.read(auth_provider.authNotifierProvider);
+    if (authState is auth_provider.AuthAuthenticated) {
+      notifier.fetchInvoiceHistory();
+    }
+
     if (widget.initialProduct != null) {
       notifier.searchProductByBarcode(widget.initialProduct!.kodeBarang);
     }
@@ -114,400 +123,478 @@ class _AddStockPageState extends ConsumerState<AddStockPage> {
     _searchProduct(notifier);
   }
 
+  Future<bool> _confirmLeavePage() async {
+    final state = ref.read(inventoryNotifierProvider);
+    if (state.items.isEmpty) {
+      return true;
+    }
+
+    final shouldLeave = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Keluar tanpa menyimpan?'),
+        content: const Text(
+          'Produk yang telah ditambahkan ke daftar akan hilang jika kamu keluar. Lanjutkan?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Tidak'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+            ),
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Ya, keluar'),
+          ),
+        ],
+      ),
+    );
+
+    return shouldLeave ?? false;
+  }
+
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(inventoryNotifierProvider);
+
+    // ← Tambahkan pengecekan auth sebelum fetch setelah invoice dibuat
     ref.listen<InventoryState>(inventoryNotifierProvider, (previous, next) {
       if (previous?.lastCreatedInvoice != next.lastCreatedInvoice &&
           next.lastCreatedInvoice != null) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          // Delay mutations to avoid modifying providers during build
-          ref
-              .read(product_provider.productNotifierProvider.notifier)
-              .loadProducts();
-          ref.read(inventoryNotifierProvider.notifier).fetchInvoiceHistory();
+          final authState = ref.read(auth_provider.authNotifierProvider);
+          if (authState is auth_provider.AuthAuthenticated) {
+            ref
+                .read(product_provider.productNotifierProvider.notifier)
+                .loadProducts();
+            ref.read(inventoryNotifierProvider.notifier).fetchInvoiceHistory();
+          }
         });
       }
     });
     final notifier = ref.read(inventoryNotifierProvider.notifier);
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Tambah Stok'),
-        actions: [
-          IconButton(
-            tooltip: 'Daftar Faktur',
-            onPressed: () {
-              Navigator.of(context).push(MaterialPageRoute(
-                builder: (_) => const InvoiceListPage(),
-              ));
-            },
-            icon: const Icon(Icons.receipt_long),
+    // ignore: deprecated_member_use
+    return WillPopScope(
+        onWillPop: _confirmLeavePage,
+        child: Scaffold(
+          appBar: AppBar(
+            title: const Text('Tambah Stok'),
+            leading: IconButton(
+              icon: const Icon(Icons.arrow_back),
+              onPressed: () async {
+                if (await _confirmLeavePage()) {
+                  // ignore: use_build_context_synchronously
+                  Navigator.of(context).pop();
+                }
+              },
+            ),
+            actions: [
+              IconButton(
+                tooltip: 'Daftar Faktur',
+                onPressed: () async {
+                  if (await _confirmLeavePage()) {
+                    // ignore: use_build_context_synchronously
+                    Navigator.of(context).push(MaterialPageRoute(
+                      builder: (_) => const InvoiceListPage(),
+                    ));
+                  }
+                },
+                icon: const Icon(Icons.receipt_long),
+              ),
+            ],
           ),
-        ],
-      ),
-      body: SingleChildScrollView(
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            children: [
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Detail Faktur',
-                        style: Theme.of(context).textTheme.titleMedium,
-                      ),
-                      const SizedBox(height: 16),
-                      Text(
-                        'Nama Penjual/Distributor',
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              fontWeight: FontWeight.w600,
-                            ),
-                      ),
-                      const SizedBox(height: 8),
-                      TextField(
-                        controller: _supplierNameController,
-                        decoration: InputDecoration(
-                          hintText:
-                              'Masukkan nama penjual atau distributor (Opsional)',
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(8),
+          body: SingleChildScrollView(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                children: [
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Detail Faktur',
+                            style: Theme.of(context).textTheme.titleMedium,
                           ),
-                          prefixIcon: const Icon(Icons.business),
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      Text(
-                        'No. Telepon',
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              fontWeight: FontWeight.w600,
-                            ),
-                      ),
-                      const SizedBox(height: 8),
-                      TextField(
-                        controller: _supplierPhoneController,
-                        keyboardType: TextInputType.phone,
-                        decoration: InputDecoration(
-                          hintText: 'Masukkan nomor telepon (Opsional)',
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(8),
+                          const SizedBox(height: 16),
+                          Text(
+                            'Nama Penjual/Distributor',
+                            style:
+                                Theme.of(context).textTheme.bodySmall?.copyWith(
+                                      fontWeight: FontWeight.w600,
+                                    ),
                           ),
-                          prefixIcon: const Icon(Icons.phone),
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      Text(
-                        'Alamat',
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              fontWeight: FontWeight.w600,
-                            ),
-                      ),
-                      const SizedBox(height: 8),
-                      TextField(
-                        controller: _supplierAddressController,
-                        maxLines: 3,
-                        decoration: InputDecoration(
-                          hintText:
-                              'Masukkan alamat penjual atau distributor (Opsional)',
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          prefixIcon: const Icon(Icons.location_on),
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      Text(
-                        'Pajak (%)',
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              fontWeight: FontWeight.w600,
-                            ),
-                      ),
-                      const SizedBox(height: 8),
-                      TextField(
-                        controller: _taxPercentageController,
-                        keyboardType: const TextInputType.numberWithOptions(
-                            decimal: true),
-                        decoration: InputDecoration(
-                          hintText: '0.00',
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          prefixIcon: const Icon(Icons.percent),
-                          suffixText: '%',
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(height: 16),
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Cari Produk',
-                        style: Theme.of(context).textTheme.titleMedium,
-                      ),
-                      const SizedBox(height: 16),
-                      if (!_useBarcodeScanner) ...[
-                        TextField(
-                          controller: _barcodeController,
-                          decoration: InputDecoration(
-                            labelText: 'Kode Produk',
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            prefixIcon: const Icon(Icons.qr_code),
-                          ),
-                          onSubmitted: (_) => _searchProduct(notifier),
-                        ),
-                        const SizedBox(height: 12),
-                        Text(
-                          'Atau',
-                          textAlign: TextAlign.center,
-                          style: Theme.of(context).textTheme.bodySmall,
-                        ),
-                        const SizedBox(height: 12),
-                        TextField(
-                          controller: _nameController,
-                          decoration: InputDecoration(
-                            labelText: 'Nama Produk',
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            prefixIcon: const Icon(Icons.search),
-                          ),
-                          onSubmitted: (_) => _searchProduct(notifier),
-                        ),
-                        const SizedBox(height: 12),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: ElevatedButton.icon(
-                                onPressed: () => _searchProduct(notifier),
-                                icon: const Icon(Icons.search),
-                                label: const Text('Cari'),
+                          const SizedBox(height: 8),
+                          TextField(
+                            controller: _supplierNameController,
+                            maxLength: 50,
+                            decoration: InputDecoration(
+                              hintText:
+                                  'Masukkan nama penjual atau distributor (Opsional)',
+                              helperText: 'Maksimal 50 karakter',
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(8),
                               ),
+                              prefixIcon: const Icon(Icons.business),
                             ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: ElevatedButton.icon(
-                                onPressed: () {
-                                  setState(() {
-                                    _useBarcodeScanner = true;
-                                  });
-                                },
-                                icon: const Icon(Icons.qr_code_scanner),
-                                label: const Text('Pindai'),
+                          ),
+                          const SizedBox(height: 16),
+                          Text(
+                            'No. Telepon',
+                            style:
+                                Theme.of(context).textTheme.bodySmall?.copyWith(
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                          ),
+                          const SizedBox(height: 8),
+                          TextField(
+                            controller: _supplierPhoneController,
+                            keyboardType: TextInputType.phone,
+                            maxLength: 12,
+                            decoration: InputDecoration(
+                              hintText: 'Masukkan nomor telepon (Opsional)',
+                              helperText: 'Maksimal 12 karakter',
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(8),
                               ),
+                              prefixIcon: const Icon(Icons.phone),
                             ),
-                          ],
-                        ),
-                      ],
-                      if (_useBarcodeScanner) ...[
-                        SizedBox(
-                          height: 300,
-                          child: MobileScanner(
-                            controller: _scannerController,
-                            onDetect: (capture) {
-                              final List<Barcode> barcodes = capture.barcodes;
-                              if (barcodes.isNotEmpty) {
-                                final barcode = barcodes.first.rawValue;
-                                if (barcode != null) {
-                                  _handleBarcodeScan(barcode, notifier);
-                                }
-                              }
-                            },
                           ),
-                        ),
-                        const SizedBox(height: 12),
-                        ElevatedButton(
-                          onPressed: () {
-                            _scannerController.stop();
-                            setState(() {
-                              _useBarcodeScanner = false;
-                            });
-                          },
-                          child: const Text('Batal Pindai'),
-                        ),
-                      ],
-                      if (state.errorMessage != null) ...[
-                        const SizedBox(height: 12),
-                        Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: Colors.red[100],
-                            borderRadius: BorderRadius.circular(8),
+                          const SizedBox(height: 16),
+                          Text(
+                            'Alamat',
+                            style:
+                                Theme.of(context).textTheme.bodySmall?.copyWith(
+                                      fontWeight: FontWeight.w600,
+                                    ),
                           ),
-                          child: Text(
-                            state.errorMessage!,
-                            style: const TextStyle(color: Colors.red),
+                          const SizedBox(height: 8),
+                          TextField(
+                            controller: _supplierAddressController,
+                            maxLines: 3,
+                            maxLength: 150,
+                            decoration: InputDecoration(
+                              hintText:
+                                  'Masukkan alamat penjual atau distributor (Opsional)',
+                              helperText: 'Maksimal 150 karakter',
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              prefixIcon: const Icon(Icons.location_on),
+                            ),
                           ),
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(height: 16),
-              if (state.searchedProduct != null)
-                ProductSearchCard(
-                  product: state.searchedProduct!,
-                  onAddTap: () {
-                    _showQuantityDialog(context);
-                  },
-                ),
-              const SizedBox(height: 16),
-              if (state.items.isNotEmpty) ...[
-                Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Daftar Produk (${state.items.length})',
-                          style: Theme.of(context).textTheme.titleMedium,
-                        ),
-                        const SizedBox(height: 12),
-                        ListView.builder(
-                          shrinkWrap: true,
-                          physics: const NeverScrollableScrollPhysics(),
-                          itemCount: state.items.length,
-                          itemBuilder: (context, index) {
-                            final item = state.items[index];
-                            return InvoiceItemRow(
-                              item: item,
-                              onQuantityChanged: (qty) {
-                                notifier.updateItemQuantity(item.id, qty);
-                              },
-                              onFieldChanged: (fieldType, value) {
-                                _handleItemFieldChange(
-                                    context, notifier, item, fieldType, value);
-                              },
-                              onRemove: () {
-                                notifier.removeItemFromInvoice(item.id);
-                              },
-                            );
-                          },
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                SafeArea(
-                  child: Padding(
-                    padding: const EdgeInsets.only(bottom: .0),
-                    child: SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton(
-                        onPressed: () {
-                          final taxValue = double.tryParse(
-                                _taxPercentageController.text
-                                    .replaceAll(',', '.'),
-                              ) ??
-                              0.0;
-
-                          notifier.createInvoice(
-                            supplierName:
-                                _supplierNameController.text.isNotEmpty
-                                    ? _supplierNameController.text
-                                    : null,
-                            supplierPhone:
-                                _supplierPhoneController.text.isNotEmpty
-                                    ? _supplierPhoneController.text
-                                    : null,
-                            supplierAddress:
-                                _supplierAddressController.text.isNotEmpty
-                                    ? _supplierAddressController.text
-                                    : null,
-                            taxPercentage: taxValue > 0 ? taxValue : null,
-                          );
-                        },
-                        style: ElevatedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(
-                            vertical: 16,
+                          const SizedBox(height: 16),
+                          Text(
+                            'Pajak (%)',
+                            style:
+                                Theme.of(context).textTheme.bodySmall?.copyWith(
+                                      fontWeight: FontWeight.w600,
+                                    ),
                           ),
-                        ),
-                        child: const Text('Buat Faktur'),
+                          const SizedBox(height: 8),
+                          TextField(
+                            controller: _taxPercentageController,
+                            keyboardType: const TextInputType.numberWithOptions(
+                                decimal: true),
+                            inputFormatters: [
+                              FilteringTextInputFormatter.allow(RegExp(
+                                  r'^(100(\.0{1,2})?|\d{1,2}(\.\d{1,2})?)?$')),
+                            ],
+                            decoration: InputDecoration(
+                              hintText: '0.00',
+                              helperText: 'Maksimal 100%',
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              prefixIcon: const Icon(Icons.percent),
+                              suffixText: '%',
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ),
-                ),
-                const SizedBox(height: 24),
-              ] else if (state.lastCreatedInvoice != null) ...[
-                Card(
-                  color: Colors.green[50],
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Icon(
-                              Icons.check_circle,
-                              color: Colors.green[600],
+                  const SizedBox(height: 16),
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Cari Produk',
+                            style: Theme.of(context).textTheme.titleMedium,
+                          ),
+                          const SizedBox(height: 16),
+                          if (!_useBarcodeScanner) ...[
+                            TextField(
+                              controller: _barcodeController,
+                              decoration: InputDecoration(
+                                labelText: 'Kode Produk',
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                prefixIcon: const Icon(Icons.qr_code),
+                              ),
+                              onSubmitted: (_) => _searchProduct(notifier),
                             ),
-                            const SizedBox(width: 12),
+                            const SizedBox(height: 12),
                             Text(
-                              'Faktur Berhasil Dibuat',
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .titleMedium
-                                  ?.copyWith(
-                                    color: Colors.green[600],
-                                    fontWeight: FontWeight.bold,
+                              'Atau',
+                              textAlign: TextAlign.center,
+                              style: Theme.of(context).textTheme.bodySmall,
+                            ),
+                            const SizedBox(height: 12),
+                            TextField(
+                              controller: _nameController,
+                              decoration: InputDecoration(
+                                labelText: 'Nama Produk',
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                prefixIcon: const Icon(Icons.search),
+                              ),
+                              onSubmitted: (_) => _searchProduct(notifier),
+                            ),
+                            const SizedBox(height: 12),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: ElevatedButton.icon(
+                                    onPressed: () => _searchProduct(notifier),
+                                    icon: const Icon(Icons.search),
+                                    label: const Text('Cari'),
                                   ),
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: ElevatedButton.icon(
+                                    onPressed: () {
+                                      setState(() {
+                                        _useBarcodeScanner = true;
+                                      });
+                                    },
+                                    icon: const Icon(Icons.qr_code_scanner),
+                                    label: const Text('Pindai'),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                          if (_useBarcodeScanner) ...[
+                            SizedBox(
+                              height: 300,
+                              child: MobileScanner(
+                                controller: _scannerController,
+                                onDetect: (capture) {
+                                  final List<Barcode> barcodes =
+                                      capture.barcodes;
+                                  if (barcodes.isNotEmpty) {
+                                    final barcode = barcodes.first.rawValue;
+                                    if (barcode != null) {
+                                      _handleBarcodeScan(barcode, notifier);
+                                    }
+                                  }
+                                },
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            ElevatedButton(
+                              onPressed: () {
+                                _scannerController.stop();
+                                setState(() {
+                                  _useBarcodeScanner = false;
+                                });
+                              },
+                              child: const Text('Batal Pindai'),
+                            ),
+                          ],
+                          if (state.errorMessage != null) ...[
+                            const SizedBox(height: 12),
+                            Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: Colors.red[100],
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Text(
+                                state.errorMessage!,
+                                style: const TextStyle(color: Colors.red),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  if (state.searchedProducts.isNotEmpty)
+                    Column(
+                      children: state.searchedProducts.map((product) {
+                        return ProductSearchCard(
+                          product: product,
+                          onAddTap: () {
+                            _showQuantityDialog(context, product);
+                          },
+                        );
+                      }).toList(),
+                    )
+                  else if (state.searchedProduct != null)
+                    ProductSearchCard(
+                      product: state.searchedProduct!,
+                      onAddTap: () {
+                        _showQuantityDialog(context, state.searchedProduct!);
+                      },
+                    ),
+                  const SizedBox(height: 16),
+                  if (state.items.isNotEmpty) ...[
+                    Card(
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Daftar Produk (${state.items.length})',
+                              style: Theme.of(context).textTheme.titleMedium,
+                            ),
+                            const SizedBox(height: 12),
+                            ListView.builder(
+                              shrinkWrap: true,
+                              physics: const NeverScrollableScrollPhysics(),
+                              itemCount: state.items.length,
+                              itemBuilder: (context, index) {
+                                final item = state.items[index];
+                                return InvoiceItemRow(
+                                  item: item,
+                                  onQuantityChanged: (qty) {
+                                    notifier.updateItemQuantity(item.id, qty);
+                                  },
+                                  onFieldChanged: (fieldType, value) {
+                                    _handleItemFieldChange(context, notifier,
+                                        item, fieldType, value);
+                                  },
+                                  onRemove: () {
+                                    notifier.removeItemFromInvoice(item.id);
+                                  },
+                                );
+                              },
                             ),
                           ],
                         ),
-                        const SizedBox(height: 12),
-                        Text(
-                          'ID: ${state.lastCreatedInvoice!.id.substring(0, 8)}',
-                          style: Theme.of(context).textTheme.bodySmall,
-                        ),
-                        const SizedBox(height: 12),
-                        SizedBox(
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    SafeArea(
+                      child: Padding(
+                        padding: const EdgeInsets.only(bottom: .0),
+                        child: SizedBox(
                           width: double.infinity,
                           child: ElevatedButton(
                             onPressed: () {
-                              Navigator.of(context)
-                                  .push(
-                                MaterialPageRoute(
-                                  builder: (context) => InvoicePreviewPage(
-                                    invoice: state.lastCreatedInvoice!,
-                                  ),
-                                ),
-                              )
-                                  .then((_) {
-                                notifier.clearInvoice();
-                              });
+                              final taxValue = double.tryParse(
+                                    _taxPercentageController.text
+                                        .replaceAll(',', '.'),
+                                  ) ??
+                                  0.0;
+
+                              notifier.createInvoice(
+                                supplierName:
+                                    _supplierNameController.text.isNotEmpty
+                                        ? _supplierNameController.text
+                                        : null,
+                                supplierPhone:
+                                    _supplierPhoneController.text.isNotEmpty
+                                        ? _supplierPhoneController.text
+                                        : null,
+                                supplierAddress:
+                                    _supplierAddressController.text.isNotEmpty
+                                        ? _supplierAddressController.text
+                                        : null,
+                                taxPercentage: taxValue > 0 ? taxValue : null,
+                              );
                             },
-                            child: const Text('Lihat Faktur'),
+                            style: ElevatedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(
+                                vertical: 16,
+                              ),
+                            ),
+                            child: const Text('Buat Faktur'),
                           ),
                         ),
-                      ],
+                      ),
                     ),
-                  ),
-                ),
-              ],
-            ],
+                    const SizedBox(height: 24),
+                  ] else if (state.lastCreatedInvoice != null) ...[
+                    Card(
+                      color: Colors.green[50],
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Icon(
+                                  Icons.check_circle,
+                                  color: Colors.green[600],
+                                ),
+                                const SizedBox(width: 12),
+                                Text(
+                                  'Faktur Berhasil Dibuat',
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .titleMedium
+                                      ?.copyWith(
+                                        color: Colors.green[600],
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 12),
+                            Text(
+                              'ID: ${state.lastCreatedInvoice!.id.substring(0, 8)}',
+                              style: Theme.of(context).textTheme.bodySmall,
+                            ),
+                            const SizedBox(height: 12),
+                            SizedBox(
+                              width: double.infinity,
+                              child: ElevatedButton(
+                                onPressed: () {
+                                  Navigator.of(context)
+                                      .push(
+                                    MaterialPageRoute(
+                                      builder: (context) => InvoicePreviewPage(
+                                        invoice: state.lastCreatedInvoice!,
+                                      ),
+                                    ),
+                                  )
+                                      .then((_) {
+                                    notifier.clearInvoice();
+                                  });
+                                },
+                                child: const Text('Lihat Faktur'),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
           ),
-        ),
-      ),
-    );
+        ));
   }
 
-  void _showQuantityDialog(BuildContext context,
+  void _showQuantityDialog(BuildContext context, Barang product,
       [String? overrideMeasureType]) {
     _dialogQtyController.clear();
     DateTime? selectedExpiry;
@@ -515,12 +602,7 @@ class _AddStockPageState extends ConsumerState<AddStockPage> {
     final TextEditingController discountController = TextEditingController();
     final TextEditingController costPriceController = TextEditingController();
     final TextEditingController costPerUnitController = TextEditingController();
-    final product = ref.read(inventoryNotifierProvider).searchedProduct;
-    String measureType = overrideMeasureType ?? product?.measureType ?? 'pcs';
-
-    if (product == null) {
-      return;
-    }
+    String measureType = overrideMeasureType ?? product.measureType ?? 'pcs';
 
     showDialog(
       context: context,
@@ -678,9 +760,14 @@ class _AddStockPageState extends ConsumerState<AddStockPage> {
                       controller: discountController,
                       keyboardType:
                           const TextInputType.numberWithOptions(decimal: true),
+                      inputFormatters: [
+                        FilteringTextInputFormatter.allow(
+                            RegExp(r'^(100(\.0{1,2})?|\d{1,2}(\.\d{1,2})?)?$')),
+                      ],
                       decoration: InputDecoration(
                         hintText: '0.00',
                         suffixText: '%',
+                        helperText: 'Maksimal 100%',
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(8),
                         ),
@@ -777,6 +864,21 @@ class _AddStockPageState extends ConsumerState<AddStockPage> {
                   final discount = discountText.isNotEmpty
                       ? double.tryParse(normalizedDiscount)
                       : null;
+
+                  final maxAllowedQuantity =
+                      measureType == 'weight' ? 250.0 : 10000.0;
+                  final unitLabel = measureType == 'weight' ? 'kg' : 'pcs';
+                  if (qty > maxAllowedQuantity) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(
+                          'Jumlah maksimal $maxAllowedQuantity $unitLabel untuk produk ini.',
+                        ),
+                        backgroundColor: Colors.red,
+                      ),
+                    );
+                    return;
+                  }
 
                   // ── Hitung subtotal berdasarkan costPrice & costPerUnit ──
                   double subtotal;
@@ -1027,6 +1129,7 @@ class _SmoothDropdownState extends State<_SmoothDropdown>
                 bottomLeft: Radius.circular(8),
                 bottomRight: Radius.circular(8),
               ),
+              // ignore: deprecated_member_use
               color: Theme.of(context).dialogBackgroundColor,
             ),
             child: Column(
@@ -1050,6 +1153,7 @@ class _SmoothDropdownState extends State<_SmoothDropdown>
                         horizontal: 12, vertical: 11),
                     decoration: BoxDecoration(
                       color: isSelected
+                          // ignore: deprecated_member_use
                           ? widget.accentColor.withOpacity(0.08)
                           : Colors.transparent,
                       border: !isLast

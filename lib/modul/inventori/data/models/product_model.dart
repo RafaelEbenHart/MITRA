@@ -21,6 +21,12 @@ class ProductModel extends Barang {
   final double? latestCostPrice;
   @override
   final double? latestCostPerUnit;
+  @override
+  final double? diskon;
+  @override
+  final DateTime? diskonMulai;
+  @override
+  final DateTime? diskonSelesai;
 
   const ProductModel({
     required this.idBarang,
@@ -32,6 +38,9 @@ class ProductModel extends Barang {
     this.batches,
     this.latestCostPrice,
     this.latestCostPerUnit,
+    this.diskon,
+    this.diskonMulai,
+    this.diskonSelesai,
   }) : super(
           idBarang: idBarang,
           namaBarang: namaBarang,
@@ -55,6 +64,9 @@ class ProductModel extends Barang {
       batches: (product.batches != null) ? product.batches : null,
       latestCostPrice: product.latestCostPrice,
       latestCostPerUnit: product.latestCostPerUnit,
+      diskon: product.diskon,
+      diskonMulai: product.diskonMulai,
+      diskonSelesai: product.diskonSelesai,
     );
   }
 
@@ -69,6 +81,9 @@ class ProductModel extends Barang {
       batches: batches,
       latestCostPrice: latestCostPrice,
       latestCostPerUnit: latestCostPerUnit,
+      diskon: diskon,
+      diskonMulai: diskonMulai,
+      diskonSelesai: diskonSelesai,
     );
   }
 
@@ -82,6 +97,9 @@ class ProductModel extends Barang {
       'measureType': measureType,
       'latestCostPrice': latestCostPrice,
       'latestCostPerUnit': latestCostPerUnit,
+      'discount': diskon,
+      'discountStart': diskonMulai?.toIso8601String(),
+      'discountEnd': diskonSelesai?.toIso8601String(),
       'batches': batches
           ?.map((b) => {
                 'id': b.id,
@@ -106,6 +124,17 @@ class ProductModel extends Barang {
       measureType: map['measureType'] as String?,
       latestCostPrice: (map['latestCostPrice'] as num?)?.toDouble(),
       latestCostPerUnit: (map['latestCostPerUnit'] as num?)?.toDouble(),
+      diskon: (map['discount'] as num?)?.toDouble(),
+      diskonMulai: map['discountStart'] == null
+          ? null
+          : map['discountStart'] is String
+              ? DateTime.tryParse(map['discountStart'] as String)
+              : (map['discountStart'] as Timestamp).toDate(),
+      diskonSelesai: map['discountEnd'] == null
+          ? null
+          : map['discountEnd'] is String
+              ? DateTime.tryParse(map['discountEnd'] as String)
+              : (map['discountEnd'] as Timestamp).toDate(),
       batches: (map['batches'] as List?)
           ?.map((b) => StockBatch(
                 id: b['id'] as String? ?? '',
@@ -122,4 +151,3 @@ class ProductModel extends Barang {
     );
   }
 }
-

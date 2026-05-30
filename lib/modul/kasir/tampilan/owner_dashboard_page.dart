@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:mitra/modul/toko/tampilan/controllers/shop_provider.dart'
@@ -34,6 +33,7 @@ class _OwnerDashboardPageState extends ConsumerState<OwnerDashboardPage> {
                 ref.read(auth_provider.authNotifierProvider.notifier).logout();
                 Future.delayed(const Duration(milliseconds: 500), () {
                   if (mounted) {
+                    // ignore: use_build_context_synchronously
                     context.go('/login');
                   }
                 });

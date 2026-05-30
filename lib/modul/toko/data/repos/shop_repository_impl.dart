@@ -36,6 +36,7 @@ class ShopRepositoryImpl implements ShopRepository {
         alamatBaris2: 'Salem - 636453',
         nomorTelepon: '+917010674588',
         pesanStruk: 'Thank you, Visit again!!!',
+        taxPercentage: 11.0,
       ));
     } catch (e) {
       return Left(CacheFailure(e.toString()));
@@ -56,6 +57,7 @@ class ShopRepositoryImpl implements ShopRepository {
         'addressLine2': model.alamatBaris2,
         'phoneNumber': model.nomorTelepon,
         'footerText': model.pesanStruk,
+        'taxPercentage': model.taxPercentage,
       });
       return const Right(null);
     } catch (e) {

@@ -113,38 +113,70 @@ class BillingNotifier extends StateNotifier<BillingState> {
     state = state.copyWith(currentTabIndex: tabIndex, error: null);
   }
 
-  Future<void> scanBarcode(String barcode) async {
+  Future<String?> scanBarcode(String barcode) async {
     if (state.currentTab == null) {
       state = state.copyWith(
           error: 'Buat pesanan terlebih dahulu sebelum menambah produk');
-      return;
+      return null;
     }
 
     final result = await getProductByBarcodeUseCase(barcode);
-    result.fold((failure) {
+    return result.fold((failure) {
       state = state.copyWith(error: 'Produk tidak ditemukan: $barcode');
+      return null;
     }, (product) {
-      addProductToCart(product);
+      final successMsg = addProductToCart(product);
+      if (successMsg == null) {
+        final maxQuantity = product.measureType == 'weight' ? 100 : 200;
+        final currentTab = state.currentTab;
+        if (currentTab != null && currentTab.items.length >= 30) {
+          state = state.copyWith(
+              error:
+                  'Keranjang penuh (max 30 item). Selesaikan pesanan terlebih dahulu.');
+        } else {
+          state = state.copyWith(
+              error:
+                  'Tidak bisa menambah ${product.namaBarang}. Kuantitas melebihi batas ($maxQuantity).');
+        }
+        return null;
+      }
+      return successMsg;
     });
   }
 
-  void addProductToCart(dynamic product) {
+  String? addProductToCart(dynamic product, {int maxItems = 30}) {
     if (state.currentTab == null) {
       state = state.copyWith(
           error: 'Buat pesanan terlebih dahulu sebelum menambah produk');
-      return;
+      return null;
     }
 
     final currentItems = state.currentTab!.items;
-    final existingIndex =
-        currentItems.indexWhere((item) => item.barang.idBarang == product.id);
+    final totalCurrentItems = currentItems.length;
+
+    // Check jika sudah mencapai max items (30)
+    final existingIndex = currentItems
+        .indexWhere((item) => item.barang.idBarang == product.idBarang);
+
+    if (existingIndex < 0 && totalCurrentItems >= maxItems) {
+      return null; // Keranjang penuh
+    }
+
+    // Validasi batas quantity berdasarkan measureType
+    final maxQuantity = product.measureType == 'weight' ? 100 : 200;
 
     List<ItemKeranjang> updatedItems;
     if (existingIndex >= 0) {
       updatedItems = List<ItemKeranjang>.from(currentItems);
       final existingItem = updatedItems[existingIndex];
-      updatedItems[existingIndex] =
-          existingItem.copyWith(jumlah: existingItem.jumlah + 1);
+      final newQuantity = existingItem.jumlah + 1;
+
+      // Check apakah quantity melebihi batas
+      if (newQuantity > maxQuantity) {
+        return null; // Quantity melebihi batas
+      }
+
+      updatedItems[existingIndex] = existingItem.copyWith(jumlah: newQuantity);
     } else {
       updatedItems = [...currentItems, ItemKeranjang(barang: product)];
     }
@@ -154,6 +186,12 @@ class BillingNotifier extends StateNotifier<BillingState> {
     tabs[state.currentTabIndex] = updatedTab;
 
     state = state.copyWith(tabs: tabs, error: null);
+
+    if (existingIndex >= 0) {
+      return '${product.namaBarang} berhasil ditambahkan ke keranjang';
+    } else {
+      return '${product.namaBarang} berhasil ditambahkan ke keranjang';
+    }
   }
 
   void removeProductFromCart(String productId) {
@@ -194,12 +232,15 @@ class BillingNotifier extends StateNotifier<BillingState> {
     state = state.copyWith(tabs: tabs);
   }
 
-  Future<void> printReceipt(
-      {required String shopName,
-      required String address,
-      String? phone,
-      required String createdBy,
-      String? footer}) async {
+  Future<void> printReceipt({
+    required String shopName,
+    required String address,
+    String? phone,
+    required String createdBy,
+    String? footer,
+    required double taxPercentage,
+    required List<double> discountRates,
+  }) async {
     if (state.currentTab == null || state.cartItems.isEmpty) {
       state = state.copyWith(error: 'Tidak ada produk untuk dicetak');
       return;
@@ -219,39 +260,68 @@ class BillingNotifier extends StateNotifier<BillingState> {
         return;
       }
 
-      final items = state.cartItems.map((cartItem) {
-        return {
+      final receiptItems = <ReceiptItem>[];
+      final printerItems = <Map<String, dynamic>>[];
+      double subtotal = 0.0;
+      double totalDiscount = 0.0;
+
+      for (final entry in state.cartItems.asMap().entries) {
+        final index = entry.key;
+        final cartItem = entry.value;
+        final originalTotal = cartItem.totalHarga;
+        final discountPercent =
+            index < discountRates.length ? discountRates[index] : 0.0;
+        final clampedDiscount = discountPercent.clamp(0.0, 100.0);
+        final discountedTotal = originalTotal * (1 - clampedDiscount / 100);
+        final discountValue = originalTotal - discountedTotal;
+
+        subtotal += discountedTotal;
+        totalDiscount += discountValue;
+
+        printerItems.add({
           'name': cartItem.barang.namaBarang,
           'qty': cartItem.jumlah.toDouble(),
           'measureType': cartItem.barang.measureType ?? 'amount',
           'price': formatIdr(cartItem.barang.hargaSatuan),
-          'total': formatIdr(cartItem.totalHarga),
-        };
-      }).toList();
+          'discount': formatIdr(discountValue),
+          'total': formatIdr(discountedTotal),
+        });
+
+        receiptItems.add(ReceiptItem(
+          id: const Uuid().v4(),
+          product: cartItem.barang,
+          quantity: -cartItem.jumlah.toDouble(),
+          measureType: cartItem.barang.measureType ?? 'amount',
+          subtotal: discountedTotal,
+          discount: clampedDiscount,
+          costPrice: cartItem.barang.latestCostPrice,
+          costPerUnit: cartItem.barang.latestCostPerUnit,
+        ));
+      }
+
+      final taxAmount = subtotal * (taxPercentage / 100);
+      final totalAmount = subtotal + taxAmount;
 
       await helper.print_format(
         shopName: shopName,
         address: address,
         phone: phone ?? '',
-        items: items,
-        total: formatIdr(state.totalAmount),
+        items: printerItems,
+        subtotal: formatIdr(subtotal),
+        totalDiscount: formatIdr(totalDiscount),
+        taxLabel:
+            'PPN ${taxPercentage.toStringAsFixed(taxPercentage % 1 == 0 ? 0 : 1)}%',
+        taxAmount: formatIdr(taxAmount),
+        total: formatIdr(totalAmount),
         createdBy: createdBy,
         footer: footer ?? '',
       );
 
-      final invoiceItems = state.cartItems.map((cartItem) {
-        return ReceiptItem(
-          id: const Uuid().v4(),
-          product: cartItem.barang,
-          quantity: -cartItem.jumlah.toDouble(),
-          measureType: cartItem.barang.measureType ?? 'amount',
-          subtotal: cartItem.totalHarga,
-          costPrice: cartItem.barang.latestCostPrice,
-          costPerUnit: cartItem.barang.latestCostPerUnit,
-        );
-      }).toList();
-
-      final params = CreateReceiptParams(items: invoiceItems);
+      final params = CreateReceiptParams(
+        items: receiptItems,
+        totalDiscount: totalDiscount,
+        taxPercentage: taxPercentage,
+      );
       final createResult = await createReceiptUseCase(params);
 
       createResult.fold((failure) {

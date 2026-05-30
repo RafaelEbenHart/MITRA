@@ -67,9 +67,7 @@ class _OwnerDashboardPageState extends ConsumerState<OwnerDashboardPage> {
               child: Builder(builder: (context) {
                 final state = ref.watch(shop_provider.shopNotifierProvider);
                 String shopName = '';
-                if (state.status == shop_provider.ShopStatus.loaded &&
-                    state.shop != null &&
-                    state.shop!.namaToko.isNotEmpty) {
+                if (state.shop != null && state.shop!.namaToko.isNotEmpty) {
                   shopName = state.shop!.namaToko;
                 }
                 return Column(

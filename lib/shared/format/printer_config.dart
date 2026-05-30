@@ -80,6 +80,10 @@ class PrinterHelper {
     required String address,
     required String phone,
     required List<Map<String, dynamic>> items,
+    required String subtotal,
+    required String totalDiscount,
+    required String taxLabel,
+    required String taxAmount,
     required String total,
     required String createdBy,
     required String footer,
@@ -87,13 +91,14 @@ class PrinterHelper {
     if (!_isConnected) return;
 
     const int lineWidth = 32;
-    const int nameWidth = 14;
+    const int nameWidth = 10;
     const int priceWidth = 9;
     const int totalWidth = 9;
 
     List<int> bytes = [];
     bytes += EscPos.init;
 
+    // Header
     bytes += EscPos.alignCenter;
     bytes += EscPos.boldOn;
     bytes += EscPos.textLarge;
@@ -120,8 +125,9 @@ class PrinterHelper {
     bytes += _textToBytes(separator);
     bytes += EscPos.lineFeed;
 
+    // Header kolom 3 (tanpa diskon)
     bytes += EscPos.alignLeft;
-    bytes += _textToBytes(_formatColumns(
+    bytes += _textToBytes(_formatColumns3(
       left: 'Produk',
       middle: 'Harga',
       right: 'SubTotal',
@@ -133,12 +139,34 @@ class PrinterHelper {
     bytes += _textToBytes(separator);
     bytes += EscPos.lineFeed;
 
+    // Daftar item
+    List<Map<String, dynamic>> discountedItems = [];
+
     for (var item in items) {
       String name = item['name'].toString();
       double qtyNum = (item['qty'] as num).toDouble();
       String measureType = item['measureType'].toString();
-      String price = item['price'].toString().replaceAll('Rp ', 'Rp');
-      String totalItem = item['total'].toString().replaceAll('Rp ', 'Rp');
+      String price = _formatPrice(item['price'].toString());
+      String totalItem = _formatPrice(item['total'].toString());
+
+      // Kumpulkan item yang punya diskon
+      // Try to parse discount value coming from formatted IDR strings
+      // e.g. "Rp 2.250" (Indonesian format uses '.' as thousand sep and ',' as decimal sep)
+      String rawDiscount = item['discount'].toString();
+      // Keep digits, dots, commas and minus sign
+      rawDiscount = rawDiscount.replaceAll(RegExp(r"[^0-9.,\-]"), '');
+      // Remove thousand separators (dots) and convert decimal comma to dot
+      rawDiscount = rawDiscount.replaceAll('.', '');
+      rawDiscount = rawDiscount.replaceAll(',', '.');
+      double discountVal = double.tryParse(rawDiscount) ?? 0;
+      if (discountVal > 0) {
+        discountedItems.add({
+          'name': name,
+          'qty': qtyNum,
+          'measureType': measureType,
+          'discount': discountVal,
+        });
+      }
 
       String qtyStr;
       if (measureType == 'weight') {
@@ -154,7 +182,7 @@ class PrinterHelper {
         prefix = prefix.substring(0, nameWidth);
       }
 
-      bytes += _textToBytes(_formatColumns(
+      bytes += _textToBytes(_formatColumns3(
         left: prefix,
         middle: price,
         right: totalItem,
@@ -168,19 +196,72 @@ class PrinterHelper {
     bytes += _textToBytes(separator);
     bytes += EscPos.lineFeed;
 
+    // Subtotal
     bytes += EscPos.alignRight;
+    bytes += _textToBytes('SUBTOTAL: ${_formatPrice(subtotal)}');
+    bytes += EscPos.lineFeed;
+
+    // Blok diskon per item (jika ada)
+    if (discountedItems.isNotEmpty) {
+      bytes += EscPos.alignLeft;
+      bytes += _textToBytes('DISKON:');
+      bytes += EscPos.lineFeed;
+
+      double grandTotalDiscount = 0;
+      for (var d in discountedItems) {
+        String dName = d['name'].toString();
+        double dQty = (d['qty'] as num).toDouble();
+        String dMeasure = d['measureType'].toString();
+        double dVal = d['discount'] as double;
+        grandTotalDiscount += dVal;
+
+        String dQtyStr = dMeasure == 'weight'
+            ? (dQty % 1 == 0
+                ? '${dQty.toInt()}kg'
+                : '${dQty.toStringAsFixed(2)}kg')
+            : '${dQty.toInt()}x';
+
+        String label = '- $dName ($dQtyStr)';
+        String discountStr = '-${_formatPrice(dVal.toStringAsFixed(0))}';
+        bytes += _textToBytes(
+          _formatLabelValue(
+            label: label,
+            value: discountStr,
+            lineWidth: lineWidth,
+          ),
+        );
+        bytes += EscPos.lineFeed;
+      }
+
+      // Total diskon tanpa tanda "-"
+      bytes += EscPos.alignRight;
+      bytes += _textToBytes(
+        'TOT.DISKON: ${_formatPrice(grandTotalDiscount.toStringAsFixed(0))}',
+      );
+      bytes += EscPos.lineFeed;
+    }
+
+    // Pajak
+    bytes += EscPos.alignRight;
+    bytes += _textToBytes('$taxLabel: ${_formatPrice(taxAmount)}');
+    bytes += EscPos.lineFeed;
+
+    // Total
     bytes += EscPos.boldOn;
-    bytes += _textToBytes('TOTAL: $total');
+    bytes += _textToBytes('TOTAL: ${_formatPrice(total)}');
     bytes += EscPos.lineFeed;
     bytes += EscPos.boldOff;
     bytes += EscPos.lineFeed;
 
+    // Kasir
     if (createdBy.isNotEmpty) {
       bytes += EscPos.alignLeft;
+      bytes += _textToBytes('Kasir: $createdBy');
       bytes += EscPos.lineFeed;
       bytes += EscPos.lineFeed;
     }
 
+    // Footer
     bytes += EscPos.alignCenter;
     bytes += _textToBytes(footer);
     bytes += EscPos.lineFeed;
@@ -191,12 +272,7 @@ class PrinterHelper {
     await PrintBluetoothThermal.writeBytes(bytes);
   }
 
-  List<int> _textToBytes(String text) {
-    // Should verify encoding, but Latin-1 usually works for basic printers
-    return List.from(text.codeUnits);
-  }
-
-  String _formatColumns({
+  String _formatColumns3({
     required String left,
     required String middle,
     required String right,
@@ -208,12 +284,38 @@ class PrinterHelper {
         ? left.substring(0, leftWidth)
         : left.padRight(leftWidth);
     final middlePart = middle.length > middleWidth
-        ? middle.substring(0, middleWidth)
+        ? middle.substring(middle.length - middleWidth)
         : middle.padLeft(middleWidth);
     final rightPart = right.length > rightWidth
-        ? right.substring(0, rightWidth)
+        ? right.substring(right.length - rightWidth)
         : right.padLeft(rightWidth);
-
     return '$leftPart$middlePart$rightPart';
+  }
+
+  String _formatLabelValue({
+    required String label,
+    required String value,
+    required int lineWidth,
+  }) {
+    int space = lineWidth - label.length - value.length;
+    if (space < 1) {
+      int maxLabel = lineWidth - value.length - 1;
+      label = label.substring(0, maxLabel.clamp(0, label.length));
+      space = 1;
+    }
+    return '$label${' ' * space}$value';
+  }
+
+  List<int> _textToBytes(String text) {
+    return List.from(text.codeUnits);
+  }
+
+  // Harga dengan prefix Rp, tanpa spasi
+  String _formatPrice(String value) {
+    var formatted = value.trim();
+    if (formatted.isEmpty) return 'Rp0';
+    formatted = formatted.replaceAll(RegExp(r'^(Rp\s*|rp\s*|RP\s*)'), '');
+    formatted = formatted.replaceAll(RegExp(r'^[^0-9]+'), '');
+    return 'Rp${formatted.isEmpty ? '0' : formatted}';
   }
 }

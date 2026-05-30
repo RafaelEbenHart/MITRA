@@ -1,11 +1,9 @@
 import 'dart:typed_data';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
-
 import 'package:mitra/modul/inventori/domain/entities/product.dart';
 import 'package:mitra/modul/inventori/tampilan/controllers/product_provider.dart'
     as product_provider;
@@ -75,8 +73,6 @@ class InventoryReportDetailPage extends ConsumerWidget {
     final pdf = pw.Document();
     final reportMonth = _formatMonth(reportDate);
     final formattedDate = _formatDate(generatedAt);
-
-    // Generate ID Laporan unik berdasarkan waktu (misal: INV-20231025-1530)
     final reportId =
         'INV-${generatedAt.year}${generatedAt.month.toString().padLeft(2, '0')}${generatedAt.day.toString().padLeft(2, '0')}-${generatedAt.hour.toString().padLeft(2, '0')}${generatedAt.minute.toString().padLeft(2, '0')}';
 
@@ -146,8 +142,6 @@ class InventoryReportDetailPage extends ConsumerWidget {
             ),
 
             pw.SizedBox(height: 10),
-
-            // ── DIVIDER TEBAL ──
             pw.Container(
               height: 6,
               color: PdfColors.black,
@@ -494,8 +488,7 @@ class InventoryReportDetailPage extends ConsumerWidget {
 
           final shopState = ref.watch(shop_provider.shopNotifierProvider);
           final shopData = <String, String>{};
-          if (shopState.status == shop_provider.ShopStatus.loaded &&
-              shopState.shop != null) {
+          if (shopState.shop != null) {
             shopData['name'] = shopState.shop!.namaToko;
             shopData['addressLine1'] = shopState.shop!.alamatBaris1;
             shopData['phoneNumber'] = shopState.shop!.nomorTelepon;
@@ -511,7 +504,14 @@ class InventoryReportDetailPage extends ConsumerWidget {
             builder: (context) {
               final inventoryState = ref.watch(inventoryNotifierProvider);
               final notifier = ref.read(inventoryNotifierProvider.notifier);
-              if (inventoryState.invoiceHistory.isEmpty &&
+
+              // ← Tambahkan pengecekan auth sebelum fetch
+              final authState = ref.watch(auth_provider.authNotifierProvider);
+              final isAuthenticated =
+                  authState is auth_provider.AuthAuthenticated;
+
+              if (isAuthenticated &&
+                  inventoryState.invoiceHistory.isEmpty &&
                   !inventoryState.isLoading) {
                 WidgetsBinding.instance.addPostFrameCallback((_) {
                   notifier.fetchInvoiceHistory();

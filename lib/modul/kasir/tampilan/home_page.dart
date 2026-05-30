@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:vibration/vibration.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 
 import 'package:mitra/modul/kasir/tampilan/controllers/billing_provider.dart';
@@ -15,6 +14,7 @@ import 'package:mitra/shared/tema/app_theme.dart';
 import 'package:mitra/shared/format/price_formatter.dart';
 import 'package:mitra/shared/komponen/mitra_button.dart';
 import 'package:mitra/modul/kasir/domain/entities/cart_item.dart';
+import 'package:mitra/shared/tema/app_colors.dart';
 
 class HomePage extends ConsumerStatefulWidget {
   const HomePage({super.key});
@@ -47,6 +47,68 @@ class _HomePageState extends ConsumerState<HomePage>
       ref.read(billingNotifierProvider.notifier);
 
   final Map<String, DateTime> _lastScanTimes = {};
+  OverlayEntry? _activeSnackBarOverlay;
+
+  void _showFloatingSnackBar({
+    required String message,
+    required Color backgroundColor,
+    required BuildContext referenceContext,
+    Duration duration = const Duration(milliseconds: 1500),
+  }) {
+    _activeSnackBarOverlay?.remove();
+    _activeSnackBarOverlay = null;
+
+    final overlayState = Overlay.of(referenceContext, rootOverlay: true);
+
+    final keyboardHeight = MediaQuery.of(referenceContext).viewInsets.bottom;
+    final entry = OverlayEntry(
+      builder: (context) {
+        return Positioned(
+          left: 16,
+          right: 16,
+          bottom: keyboardHeight > 0 ? keyboardHeight + 16 : 16,
+          child: Material(
+            color: Colors.transparent,
+            child: SafeArea(
+              minimum: EdgeInsets.zero,
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 14,
+                ),
+                decoration: BoxDecoration(
+                  color: backgroundColor,
+                  borderRadius: BorderRadius.circular(12),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Colors.black26,
+                      blurRadius: 12,
+                      offset: Offset(0, 4),
+                    ),
+                  ],
+                ),
+                child: Text(
+                  message,
+                  style: const TextStyle(color: Colors.white),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+
+    overlayState.insert(entry);
+    _activeSnackBarOverlay = entry;
+
+    Future.delayed(duration, () {
+      if (_activeSnackBarOverlay == entry) {
+        _activeSnackBarOverlay?.remove();
+        _activeSnackBarOverlay = null;
+      }
+    });
+  }
 
   @override
   void initState() {
@@ -300,13 +362,23 @@ class _HomePageState extends ConsumerState<HomePage>
 
         _lastScanTimes[rawValue] = now;
 
-        final hasVibrator = await Vibration.hasVibrator();
-        if (hasVibrator == true) {
-          Vibration.vibrate();
-        }
-
         if (mounted) {
-          billingNotifier.scanBarcode(rawValue);
+          final result = await billingNotifier.scanBarcode(rawValue);
+          if (result != null && result.isNotEmpty) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(result),
+                backgroundColor: Colors.green,
+                duration: const Duration(milliseconds: 1500),
+                behavior: SnackBarBehavior.floating,
+                margin: EdgeInsets.only(
+                  bottom: MediaQuery.of(context).viewInsets.bottom + 16,
+                  left: 16,
+                  right: 16,
+                ),
+              ),
+            );
+          }
         }
         break;
       }
@@ -379,15 +451,11 @@ class _HomePageState extends ConsumerState<HomePage>
       child: Stack(
         fit: StackFit.expand,
         children: [
-          // ── PERUBAHAN 2: hapus overlay border scanner (kotak putih & sudut coklat) ──
           if (_isCameraOn)
             MobileScanner(
               controller: _scannerController,
               onDetect: _onDetect,
-            )
-          else
-            _buildCameraOffState(),
-          // Border scanner dihapus sepenuhnya dari sini
+            ),
           Positioned(
             top: topPadding,
             right: 16,
@@ -424,43 +492,6 @@ class _HomePageState extends ConsumerState<HomePage>
     );
   }
 
-  Widget _buildCameraOffState() {
-    return Container(
-      color: const Color(0xFF1E293B),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Container(
-            width: 64,
-            height: 64,
-            decoration: const BoxDecoration(
-              color: Color(0xFF334155),
-              shape: BoxShape.circle,
-            ),
-            alignment: Alignment.center,
-            child:
-                const Icon(Icons.videocam_off, color: Colors.white, size: 32),
-          ),
-          const SizedBox(height: 16),
-          const Text(
-            'Kamera dimatikan',
-            style: TextStyle(
-                color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
-          ),
-          const SizedBox(height: 8),
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 32),
-            child: Text(
-              'Nyalakan kamera untuk mulai memindai barcode dan item secara otomatis.',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.white70, fontSize: 12),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildBottomPanel(BillingState state) {
     return Container(
       decoration: const BoxDecoration(
@@ -478,7 +509,6 @@ class _HomePageState extends ConsumerState<HomePage>
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  // ── PERUBAHAN 3: label "Tab Penjualan" sejajar dengan "Item Terpindai" ──
                   if (state.currentTab != null)
                     Padding(
                       padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
@@ -623,8 +653,6 @@ class _HomePageState extends ConsumerState<HomePage>
       width: 120,
       child: Column(
         children: [
-          // ── PERUBAHAN 1: label "Tab Penjualan" sejajar dengan "Item Terpindai" ──
-          // Tinggi header disesuaikan agar baseline-nya sama (padding top 14 + 2 line text ≈ sama)
           Padding(
             padding: const EdgeInsets.fromLTRB(8, 14, 8, 8),
             child: Align(
@@ -961,9 +989,14 @@ class _HomePageState extends ConsumerState<HomePage>
   }
 
   void _showAddProductDialog(BuildContext context) {
+    // Simpan homeContext di sini agar bisa diakses dari dalam dialog
+    // tanpa terpengaruh oleh context dialog itu sendiri
+    final homeContext = context;
+
     final queryController = TextEditingController();
     List<Barang> suggestions = [];
     bool hasSearched = false;
+    bool hasTriggeredLoad = false;
 
     showDialog(
       context: context,
@@ -974,105 +1007,197 @@ class _HomePageState extends ConsumerState<HomePage>
             140;
 
         return StatefulBuilder(
-          builder: (dialogContext, setState) => AlertDialog(
-            insetPadding:
-                const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
-            title: const Text('Tambah Produk'),
-            contentPadding: const EdgeInsets.only(
-              left: 24,
-              right: 24,
-              top: 20,
-              bottom: 20,
-            ),
-            content: SizedBox(
-              width: double.maxFinite,
-              height: availableHeight.clamp(260.0, 380.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
+          builder: (dialogContext, setState) {
+            final productState =
+                ref.watch(product_provider.productNotifierProvider);
+            final billingState = ref.watch(billingNotifierProvider);
+            final productNotifier =
+                ref.read(product_provider.productNotifierProvider.notifier);
+
+            if (!hasTriggeredLoad &&
+                productState.status == product_provider.ProductStatus.initial) {
+              hasTriggeredLoad = true;
+              Future.microtask(() => productNotifier.loadProducts());
+            }
+
+            final cartItemCount = billingState.cartItems.length;
+            final isCartFull = cartItemCount >= 30;
+
+            return AlertDialog(
+              insetPadding:
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+              title: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  TextField(
-                    controller: queryController,
-                    decoration: const InputDecoration(
-                      labelText: 'Nama atau Kode Produk',
-                      border: OutlineInputBorder(),
-                      prefixIcon: Icon(Icons.search),
+                  const Text('Tambah Produk'),
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: isCartFull
+                          ? Colors.red.withValues(alpha: 0.1)
+                          : AppColors.primary.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(12),
                     ),
-                    onChanged: (value) {
-                      final query = value.trim().toLowerCase();
-                      final matches = ref
-                          .read(product_provider.productNotifierProvider)
-                          .products
-                          .where((p) {
-                        final lowerName = p.namaBarang.toLowerCase();
-                        final lowerBarcode = p.kodeBarang.toLowerCase();
-                        return query.isNotEmpty &&
-                            (lowerName.contains(query) ||
-                                lowerBarcode.contains(query));
-                      }).toList();
-                      setState(() {
-                        hasSearched = query.isNotEmpty;
-                        suggestions = matches;
-                      });
-                    },
-                  ),
-                  const SizedBox(height: 16),
-                  if (hasSearched && suggestions.isEmpty)
-                    const Expanded(
-                      child: Center(
-                        child: Text(
-                          'Tidak ada produk yang cocok. Coba kata kunci lain.',
-                          style: TextStyle(color: Colors.grey),
-                          textAlign: TextAlign.center,
-                        ),
-                      ),
-                    ),
-                  if (suggestions.isNotEmpty) ...[
-                    const Text(
-                      'Hasil Pencarian',
+                    child: Text(
+                      '$cartItemCount/30 item',
                       style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.bold,
+                        color: isCartFull ? Colors.red : AppColors.primary,
                       ),
                     ),
-                    const SizedBox(height: 12),
-                    Expanded(
-                      child: ListView.separated(
-                        itemCount: suggestions.length,
-                        separatorBuilder: (_, __) => const Divider(height: 1),
-                        itemBuilder: (context, index) {
-                          final product = suggestions[index];
-                          return ListTile(
-                            title: Text(product.namaBarang),
-                            subtitle: Text(product.kodeBarang),
-                            trailing: IconButton(
-                              icon: const Icon(Icons.add_circle_outline),
-                              onPressed: () {
-                                billingNotifier.addProductToCart(product);
-                                Navigator.of(dialogContext).pop();
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: Text(
-                                        '${product.namaBarang} berhasil ditambahkan ke keranjang'),
-                                    backgroundColor: Colors.green,
-                                  ),
-                                );
-                              },
-                            ),
-                          );
-                        },
-                      ),
-                    ),
-                  ],
+                  ),
                 ],
               ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(dialogContext).pop(),
-                child: const Text('Batal'),
+              contentPadding: const EdgeInsets.only(
+                left: 24,
+                right: 24,
+                top: 20,
+                bottom: 20,
               ),
-            ],
-          ),
+              content: SizedBox(
+                width: double.maxFinite,
+                height: availableHeight.clamp(260.0, 380.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    if (isCartFull)
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Colors.red.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: Colors.red.shade200),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.info, color: Colors.red, size: 20),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                'Keranjang penuh (max 30 item). Selesaikan pesanan atau hapus item untuk menambah produk baru.',
+                                style: TextStyle(
+                                  color: Colors.red.shade700,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    if (isCartFull) const SizedBox(height: 16),
+                    TextField(
+                      controller: queryController,
+                      enabled: !isCartFull,
+                      decoration: const InputDecoration(
+                        labelText: 'Nama atau Kode Produk',
+                        border: OutlineInputBorder(),
+                        prefixIcon: Icon(Icons.search),
+                      ),
+                      onChanged: (value) {
+                        final query = value.trim().toLowerCase();
+                        final matches = productState.products.where((p) {
+                          final lowerName = p.namaBarang.toLowerCase();
+                          final lowerBarcode = p.kodeBarang.toLowerCase();
+                          return query.isNotEmpty &&
+                              (lowerName.contains(query) ||
+                                  lowerBarcode.contains(query));
+                        }).toList();
+                        setState(() {
+                          hasSearched = query.isNotEmpty;
+                          suggestions = matches;
+                        });
+                      },
+                    ),
+                    const SizedBox(height: 16),
+                    if (productState.status ==
+                        product_provider.ProductStatus.loading)
+                      const Expanded(
+                        child: Center(
+                          child: CircularProgressIndicator(),
+                        ),
+                      )
+                    else if (!hasSearched && suggestions.isEmpty)
+                      const Expanded(
+                        child: Center(
+                          child: Text(
+                            'Masukkan nama atau kode yang relevan untuk mencari produk.',
+                            style: TextStyle(color: Colors.grey),
+                            textAlign: TextAlign.center,
+                          ),
+                        ),
+                      )
+                    else if (hasSearched && suggestions.isEmpty)
+                      const Expanded(
+                        child: Center(
+                          child: Text(
+                            'Tidak ada produk yang cocok. Coba kata kunci lain.',
+                            style: TextStyle(color: Colors.grey),
+                            textAlign: TextAlign.center,
+                          ),
+                        ),
+                      )
+                    else if (suggestions.isNotEmpty) ...[
+                      const Text(
+                        'Hasil Pencarian',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Expanded(
+                        child: ListView.separated(
+                          itemCount: suggestions.length,
+                          separatorBuilder: (_, __) => const Divider(height: 1),
+                          itemBuilder: (context, index) {
+                            final product = suggestions[index];
+                            return ListTile(
+                              title: Text(product.namaBarang),
+                              subtitle: Text(product.kodeBarang),
+                              trailing: IconButton(
+                                icon: const Icon(Icons.add_circle_outline),
+                                onPressed: isCartFull
+                                    ? null
+                                    : () {
+                                        final successMsg = billingNotifier
+                                            .addProductToCart(product,
+                                                maxItems: 30);
+                                        if (successMsg != null) {
+                                          setState(() {});
+                                          _showFloatingSnackBar(
+                                            message:
+                                                '${product.namaBarang} berhasil ditambahkan.',
+                                            backgroundColor: Colors.green,
+                                            referenceContext: homeContext,
+                                          );
+                                        } else {
+                                          _showFloatingSnackBar(
+                                            message:
+                                                'Tidak bisa menambah produk ini. Keranjang penuh atau kuantitas melebihi batas.',
+                                            backgroundColor: Colors.red,
+                                            referenceContext: homeContext,
+                                          );
+                                        }
+                                      },
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(),
+                  child: const Text('Selesai'),
+                ),
+              ],
+            );
+          },
         );
       },
     );

@@ -30,7 +30,11 @@ class InventoryNotifier extends StateNotifier<InventoryState> {
         ));
 
   Future<void> searchProductByBarcode(String barcode) async {
-    state = state.copyWith(isLoading: true, errorMessage: null);
+    state = state.copyWith(
+      isLoading: true,
+      errorMessage: null,
+      searchedProducts: const [],
+    );
     final result = await getProductByBarcodeUseCase(barcode);
     result.fold(
       (failure) {
@@ -38,12 +42,14 @@ class InventoryNotifier extends StateNotifier<InventoryState> {
           isLoading: false,
           errorMessage: failure.message,
           searchedProduct: null,
+          searchedProducts: const [],
         );
       },
       (product) {
         state = state.copyWith(
           isLoading: false,
           searchedProduct: product,
+          searchedProducts: const [],
           errorMessage: null,
         );
       },
@@ -51,7 +57,11 @@ class InventoryNotifier extends StateNotifier<InventoryState> {
   }
 
   Future<void> searchProductByName(String name) async {
-    state = state.copyWith(isLoading: true, errorMessage: null);
+    state = state.copyWith(
+      isLoading: true,
+      errorMessage: null,
+      searchedProducts: const [],
+    );
     final result = await getProductsUseCase(NoParams());
     result.fold(
       (failure) {
@@ -59,25 +69,38 @@ class InventoryNotifier extends StateNotifier<InventoryState> {
           isLoading: false,
           errorMessage: failure.message,
           searchedProduct: null,
+          searchedProducts: const [],
         );
       },
       (products) {
-        try {
-          final product = products.firstWhere(
-            (p) => p.namaBarang.toLowerCase().contains(name.toLowerCase()),
-          );
-          state = state.copyWith(
-            isLoading: false,
-            searchedProduct: product,
-            errorMessage: null,
-          );
-        } catch (_) {
+        final query = name.trim().toLowerCase();
+        final searchTerms = query
+            .split(RegExp(r'\s+'))
+            .where((term) => term.isNotEmpty)
+            .toList();
+
+        final matchingProducts = products.where((p) {
+          final lowerName = p.namaBarang.toLowerCase();
+          return searchTerms.every((term) => lowerName.contains(term));
+        }).toList();
+
+        if (matchingProducts.isEmpty) {
           state = state.copyWith(
             isLoading: false,
             errorMessage: 'Produk tidak ditemukan',
             searchedProduct: null,
+            searchedProducts: const [],
           );
+          return;
         }
+
+        state = state.copyWith(
+          isLoading: false,
+          searchedProduct:
+              matchingProducts.length == 1 ? matchingProducts.first : null,
+          searchedProducts: matchingProducts,
+          errorMessage: null,
+        );
       },
     );
   }
@@ -87,6 +110,7 @@ class InventoryNotifier extends StateNotifier<InventoryState> {
     state = state.copyWith(
       items: newItems,
       searchedProduct: null,
+      searchedProducts: const [],
       errorMessage: null,
     );
   }
@@ -128,6 +152,7 @@ class InventoryNotifier extends StateNotifier<InventoryState> {
     state = state.copyWith(
       items: [],
       searchedProduct: null,
+      searchedProducts: const [],
       errorMessage: null,
       lastCreatedInvoice: null,
     );
@@ -174,22 +199,33 @@ class InventoryNotifier extends StateNotifier<InventoryState> {
 
   Future<void> fetchInvoiceHistory() async {
     state = state.copyWith(isLoading: true, errorMessage: null);
-    final result = await getInvoiceHistoryUseCase(NoParams());
-    result.fold(
-      (failure) {
-        state = state.copyWith(
-          isLoading: false,
-          errorMessage: failure.message,
-        );
-      },
-      (invoices) {
-        state = state.copyWith(
-          isLoading: false,
-          invoiceHistory: invoices,
-          errorMessage: null,
-        );
-      },
-    );
+    try {
+      final result = await getInvoiceHistoryUseCase(NoParams());
+      result.fold(
+        (failure) {
+          // Tangkap permission-denied secara spesifik
+          final msg = failure.message.contains('permission-denied')
+              ? 'Sesi login belum siap. Silakan kembali dan coba lagi.'
+              : failure.message;
+          state = state.copyWith(
+            isLoading: false,
+            errorMessage: msg,
+          );
+        },
+        (invoices) {
+          state = state.copyWith(
+            isLoading: false,
+            invoiceHistory: invoices,
+            errorMessage: null,
+          );
+        },
+      );
+    } catch (e) {
+      final msg = e.toString().contains('permission-denied')
+          ? 'Sesi login belum siap. Silakan kembali dan coba lagi.'
+          : e.toString();
+      state = state.copyWith(isLoading: false, errorMessage: msg);
+    }
   }
 
   Future<void> fetchSalesReceipts() async {
@@ -213,7 +249,11 @@ class InventoryNotifier extends StateNotifier<InventoryState> {
   }
 
   void resetSearch() {
-    state = state.copyWith(searchedProduct: null, errorMessage: null);
+    state = state.copyWith(
+      searchedProduct: null,
+      searchedProducts: const [],
+      errorMessage: null,
+    );
   }
 }
 

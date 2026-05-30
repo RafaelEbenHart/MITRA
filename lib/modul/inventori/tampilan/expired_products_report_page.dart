@@ -1,5 +1,4 @@
 import 'dart:typed_data';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pdf/pdf.dart';
@@ -53,6 +52,7 @@ class ExpiredProductsReportPage extends ConsumerWidget {
       return sum + subtotal;
     });
 
+    // ignore: no_leading_underscores_for_local_identifiers
     String _formatCurrency(double value) {
       return formatIdr(value);
     }

@@ -315,8 +315,10 @@ class InventoryRepositoryImpl implements InventoryRepository {
   }) async {
     try {
       final receiptId = const Uuid().v4();
-      final totalAmount =
+      final subtotal =
           items.fold<double>(0.0, (total, item) => total + item.subtotal);
+      final finalTaxPercentage = taxPercentage ?? 0.0;
+      final totalAmount = subtotal + subtotal * (finalTaxPercentage / 100);
 
       final currentUser = await RouteGuard.getCurrentUser();
       final createdBy = currentUser?.namaLengkap ?? '';

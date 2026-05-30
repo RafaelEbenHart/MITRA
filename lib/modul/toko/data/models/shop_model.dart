@@ -11,6 +11,8 @@ class ShopModel extends DataToko {
   final String nomorTelepon;
   @override
   final String pesanStruk;
+  @override
+  final double taxPercentage;
 
   const ShopModel({
     required this.namaToko,
@@ -18,12 +20,14 @@ class ShopModel extends DataToko {
     required this.alamatBaris2,
     required this.nomorTelepon,
     required this.pesanStruk,
+    required this.taxPercentage,
   }) : super(
           namaToko: namaToko,
           alamatBaris1: alamatBaris1,
           alamatBaris2: alamatBaris2,
           nomorTelepon: nomorTelepon,
           pesanStruk: pesanStruk,
+          taxPercentage: taxPercentage,
         );
 
   factory ShopModel.fromEntity(DataToko shop) {
@@ -33,6 +37,7 @@ class ShopModel extends DataToko {
       alamatBaris2: shop.alamatBaris2,
       nomorTelepon: shop.nomorTelepon,
       pesanStruk: shop.pesanStruk,
+      taxPercentage: shop.taxPercentage,
     );
   }
 
@@ -45,6 +50,7 @@ class ShopModel extends DataToko {
       'addressLine2': alamatBaris2,
       'phoneNumber': nomorTelepon,
       'footerText': pesanStruk,
+      'taxPercentage': taxPercentage,
     };
   }
 
@@ -55,7 +61,7 @@ class ShopModel extends DataToko {
       alamatBaris2: (map['addressLine2'] as String?) ?? '',
       nomorTelepon: (map['phoneNumber'] as String?) ?? '',
       pesanStruk: (map['footerText'] as String?) ?? '',
+      taxPercentage: (map['taxPercentage'] as num?)?.toDouble() ?? 11.0,
     );
   }
 }
-

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:mitra/modul/inventori/domain/entities/invoice.dart';
 import 'package:mitra/shared/format/price_formatter.dart';
 
@@ -217,10 +218,15 @@ class _InvoiceItemRowState extends State<InvoiceItemRow> {
           TextField(
             controller: _discountController,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            inputFormatters: [
+              FilteringTextInputFormatter.allow(
+                  RegExp(r'^(100(\.0{1,2})?|\d{1,2}(\.\d{1,2})?)?$')),
+            ],
             style: const TextStyle(color: _customBrown),
             decoration: InputDecoration(
               hintText: '0.00',
               suffixText: '%',
+              helperText: 'Maksimal 100%',
               suffixStyle: const TextStyle(color: _customBrown),
               isDense: true,
               contentPadding:
@@ -230,9 +236,17 @@ class _InvoiceItemRowState extends State<InvoiceItemRow> {
             ),
             onSubmitted: (val) {
               final parsed = double.tryParse(val.replaceAll(',', '.'));
-              if (parsed != null) {
+              if (parsed != null && parsed <= 100.0) {
                 widget.onFieldChanged?.call('discount', parsed);
               }
+            },
+            onEditingComplete: () {
+              final parsed = double.tryParse(
+                  _discountController.text.replaceAll(',', '.'));
+              if (parsed != null && parsed <= 100.0) {
+                widget.onFieldChanged?.call('discount', parsed);
+              }
+              FocusScope.of(context).unfocus();
             },
           ),
           const SizedBox(height: 16),

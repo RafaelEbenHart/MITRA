@@ -14,6 +14,9 @@ class Barang extends Equatable {
       latestCostPrice; // Latest harga beli (from most recent batch, read-only)
   final double?
       latestCostPerUnit; // Latest cost per unit (read-only from latest batch)
+  final double? diskon;
+  final DateTime? diskonMulai;
+  final DateTime? diskonSelesai;
 
   const Barang({
     required this.idBarang,
@@ -25,6 +28,9 @@ class Barang extends Equatable {
     this.batches,
     this.latestCostPrice,
     this.latestCostPerUnit,
+    this.diskon,
+    this.diskonMulai,
+    this.diskonSelesai,
   });
 
   @override
@@ -37,7 +43,10 @@ class Barang extends Equatable {
         measureType,
         batches,
         latestCostPrice,
-        latestCostPerUnit
+        latestCostPerUnit,
+        diskon,
+        diskonMulai,
+        diskonSelesai,
       ];
 }
 

@@ -1,5 +1,4 @@
 import 'dart:typed_data';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:printing/printing.dart';
@@ -480,6 +479,7 @@ class InvoicePreviewPage extends ConsumerWidget {
                   child: DataTable(
                     border: TableBorder.all(color: Colors.black54, width: 0.5),
                     headingRowColor:
+                        // ignore: deprecated_member_use
                         MaterialStateProperty.all(Colors.grey[200]),
                     headingTextStyle: Theme.of(context)
                         .textTheme
