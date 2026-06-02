@@ -1,5 +1,6 @@
 import 'package:fpdart/fpdart.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:uuid/uuid.dart';
 import '../../domain/entities/invoice.dart';
 import '../../domain/entities/receipt.dart';
@@ -160,6 +161,13 @@ class InventoryRepositoryImpl implements InventoryRepository {
   @override
   Future<Either<Failure, List<Invoice>>> getInvoiceHistory() async {
     try {
+      // Get current authenticated user
+      final currentUser = FirebaseAuth.instance.currentUser;
+      if (currentUser == null) {
+        // If no user is authenticated, return empty list
+        return const Right([]);
+      }
+
       final snapshot = await _firestore
           .collection(_invoicesCollection)
           .orderBy('createdDate', descending: true)
@@ -417,6 +425,13 @@ class InventoryRepositoryImpl implements InventoryRepository {
   @override
   Future<Either<Failure, List<Receipt>>> getSalesReceipts() async {
     try {
+      // Get current authenticated user
+      final currentUser = FirebaseAuth.instance.currentUser;
+      if (currentUser == null) {
+        // If no user is authenticated, return empty list
+        return const Right([]);
+      }
+
       final snapshot = await _firestore
           .collection(_receiptsCollection)
           .orderBy('createdDate', descending: true)

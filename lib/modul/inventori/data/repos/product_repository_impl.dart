@@ -1,4 +1,5 @@
 import 'package:fpdart/fpdart.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../../../../infrastruktur/penyimpanan/firebase_database.dart';
 import '../../../../shared/galat/failures.dart';
 import '../../domain/entities/product.dart';
@@ -24,7 +25,14 @@ class ProductRepositoryImpl implements ProductRepository {
         return const Right([]);
       }
 
+      // Ensure user is authenticated before querying
+      final currentUser = FirebaseAuth.instance.currentUser;
+      if (currentUser == null) {
+        return const Right([]);
+      }
+
       final querySnapshot = await FirebaseDatabase.productsCollection().get();
+
       final products = querySnapshot.docs
           .map((doc) => ProductModel.fromMap(doc.data()).toEntity())
           .toList();
@@ -89,6 +97,12 @@ class ProductRepositoryImpl implements ProductRepository {
     try {
       if (!FirebaseDatabase.isFirebaseAvailable) {
         return const Left(CacheFailure('Firebase not available'));
+      }
+
+      // Ensure user is authenticated before querying
+      final currentUser = FirebaseAuth.instance.currentUser;
+      if (currentUser == null) {
+        return const Left(CacheFailure('User not authenticated'));
       }
 
       final querySnapshot = await FirebaseDatabase.productsCollection()

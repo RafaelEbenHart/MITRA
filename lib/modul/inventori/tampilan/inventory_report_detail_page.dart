@@ -460,13 +460,32 @@ class InventoryReportDetailPage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final authState = ref.watch(auth_provider.authNotifierProvider);
+
+    // Pastikan user sudah authenticated
+    if (authState is! auth_provider.AuthAuthenticated) {
+      return Scaffold(
+        appBar: AppBar(title: Text(title)),
+        body: const Center(child: CircularProgressIndicator()),
+      );
+    }
+
     return Scaffold(
-      appBar: AppBar(
-        title: Text(title),
-      ),
-      body: SafeArea(
-        child: Builder(builder: (context) {
+        appBar: AppBar(
+          title: Text(title),
+        ),
+        body: SafeArea(child: Builder(builder: (context) {
           final state = ref.watch(product_provider.productNotifierProvider);
+
+          // Load products if not loaded yet
+          if (state.status == product_provider.ProductStatus.initial) {
+            Future.microtask(() {
+              ref
+                  .read(product_provider.productNotifierProvider.notifier)
+                  .loadProducts();
+            });
+          }
+
           if (state.status == product_provider.ProductStatus.loading) {
             return const Center(child: CircularProgressIndicator());
           }
@@ -500,510 +519,549 @@ class InventoryReportDetailPage extends ConsumerWidget {
               authState is auth_provider.AuthAuthenticated &&
                   authState.user.peran == PeranPengguna.karyawan;
 
-          return Builder(
-            builder: (context) {
-              final inventoryState = ref.watch(inventoryNotifierProvider);
-              final notifier = ref.read(inventoryNotifierProvider.notifier);
-
-              // ← Tambahkan pengecekan auth sebelum fetch
-              final authState = ref.watch(auth_provider.authNotifierProvider);
-              final isAuthenticated =
-                  authState is auth_provider.AuthAuthenticated;
-
-              if (isAuthenticated &&
-                  inventoryState.invoiceHistory.isEmpty &&
-                  !inventoryState.isLoading) {
-                WidgetsBinding.instance.addPostFrameCallback((_) {
-                  notifier.fetchInvoiceHistory();
-                });
-              }
-
-              final incomingEntries = <Map<String, dynamic>>[];
-              for (final inv in inventoryState.invoiceHistory) {
-                if (inv.createdDate.year == reportDate.year &&
-                    inv.createdDate.month == reportDate.month) {
-                  for (final item in inv.items) {
-                    // Only include products that still exist (not deleted)
-                    if (products
-                        .any((p) => p.idBarang == item.product.idBarang)) {
-                      incomingEntries.add({
-                        'product': item.product,
-                        'invoiceId': inv.id,
-                        'quantity': item.quantity,
-                        'subtotal': item.subtotal,
-                        'costPrice': item.costPrice ??
-                            item.product.latestCostPrice ??
-                            item.product.hargaSatuan,
-                        'costPerUnit':
-                            item.costPerUnit ?? item.product.latestCostPerUnit,
-                      });
+          return ref.watch(invoiceHistoryProvider).when(
+                data: (invoiceHistory) => Builder(
+                  builder: (context) {
+                    final incomingEntries = <Map<String, dynamic>>[];
+                    for (final inv in invoiceHistory) {
+                      if (inv.createdDate.year == reportDate.year &&
+                          inv.createdDate.month == reportDate.month) {
+                        for (final item in inv.items) {
+                          // Only include products that still exist (not deleted)
+                          if (products.any(
+                              (p) => p.idBarang == item.product.idBarang)) {
+                            incomingEntries.add({
+                              'product': item.product,
+                              'invoiceId': inv.id,
+                              'quantity': item.quantity,
+                              'subtotal': item.subtotal,
+                              'costPrice': item.costPrice ??
+                                  item.product.latestCostPrice ??
+                                  item.product.hargaSatuan,
+                              'costPerUnit': item.costPerUnit ??
+                                  item.product.latestCostPerUnit,
+                            });
+                          }
+                        }
+                      }
                     }
-                  }
-                }
-              }
 
-              final totalIncomingQty = incomingEntries.fold<double>(
-                  0, (s, e) => s + (e['quantity'] as double));
+                    final totalIncomingQty = incomingEntries.fold<double>(
+                        0, (s, e) => s + (e['quantity'] as double));
 
-              final outgoingEntries = <Map<String, dynamic>>[];
-              for (final p in products) {
-                if (p.batches != null) {
-                  for (final b in p.batches!) {
-                    if (b.expirationDate.year == reportDate.year &&
-                        b.expirationDate.month == reportDate.month) {
-                      outgoingEntries.add({
-                        'product': p,
-                        'batch': b,
-                        'invoiceId': b.invoiceId ?? '',
-                        'kode': b.id,
-                        'quantity': b.quantity,
-                        'costPrice':
-                            b.costPrice ?? p.latestCostPrice ?? p.hargaSatuan,
-                      });
+                    final outgoingEntries = <Map<String, dynamic>>[];
+                    for (final p in products) {
+                      if (p.batches != null) {
+                        for (final b in p.batches!) {
+                          if (b.expirationDate.year == reportDate.year &&
+                              b.expirationDate.month == reportDate.month) {
+                            outgoingEntries.add({
+                              'product': p,
+                              'batch': b,
+                              'invoiceId': b.invoiceId ?? '',
+                              'kode': b.id,
+                              'quantity': b.quantity,
+                              'costPrice': b.costPrice ??
+                                  p.latestCostPrice ??
+                                  p.hargaSatuan,
+                            });
+                          }
+                        }
+                      }
                     }
-                  }
-                }
-              }
 
-              final expiredQty = outgoingEntries.fold<double>(
-                  0, (s, e) => s + (e['quantity'] as double));
+                    final expiredQty = outgoingEntries.fold<double>(
+                        0, (s, e) => s + (e['quantity'] as double));
 
-              return Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    if (!hideShopDetails && shopData.isNotEmpty) ...[
-                      Card(
-                        child: Padding(
-                          padding: const EdgeInsets.all(16),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                shopData['name'] ?? '',
-                                style: Theme.of(context)
-                                    .textTheme
-                                    .titleMedium
-                                    ?.copyWith(fontWeight: FontWeight.bold),
+                    return Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          if (!hideShopDetails && shopData.isNotEmpty) ...[
+                            Card(
+                              child: Padding(
+                                padding: const EdgeInsets.all(16),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      shopData['name'] ?? '',
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .titleMedium
+                                          ?.copyWith(
+                                              fontWeight: FontWeight.bold),
+                                    ),
+                                    const SizedBox(height: 6),
+                                    if ((shopData['addressLine1'] ?? '')
+                                        .isNotEmpty)
+                                      Text(shopData['addressLine1']!),
+                                    if ((shopData['phoneNumber'] ?? '')
+                                        .isNotEmpty)
+                                      Text('Tel: ${shopData['phoneNumber']!}'),
+                                  ],
+                                ),
                               ),
-                              const SizedBox(height: 6),
-                              if ((shopData['addressLine1'] ?? '').isNotEmpty)
-                                Text(shopData['addressLine1']!),
-                              if ((shopData['phoneNumber'] ?? '').isNotEmpty)
-                                Text('Tel: ${shopData['phoneNumber']!}'),
-                            ],
+                            ),
+                            const SizedBox(height: 16),
+                          ],
+                          Card(
+                            child: Padding(
+                              padding: const EdgeInsets.all(16),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Laporan Persediaan Bulan ${_formatMonth(reportDate)}',
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .titleMedium
+                                        ?.copyWith(fontWeight: FontWeight.bold),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    'Menampilkan stok saat ini berdasarkan inventaris.',
+                                    style:
+                                        Theme.of(context).textTheme.bodySmall,
+                                  ),
+                                  const SizedBox(height: 12),
+                                  Wrap(
+                                    spacing: 12,
+                                    runSpacing: 8,
+                                    children: [
+                                      _buildSummaryChip(
+                                        label: 'Produk terdaftar',
+                                        value:
+                                            inventoryProducts.length.toString(),
+                                      ),
+                                      _buildSummaryChip(
+                                        label: 'Total stok',
+                                        value: totalQty % 1 == 0
+                                            ? totalQty.toInt().toString()
+                                            : totalQty.toStringAsFixed(2),
+                                      ),
+                                      _buildSummaryChip(
+                                        label: 'Produk Masuk',
+                                        value: totalIncomingQty % 1 == 0
+                                            ? totalIncomingQty
+                                                .toInt()
+                                                .toString()
+                                            : totalIncomingQty
+                                                .toStringAsFixed(2),
+                                      ),
+                                      _buildSummaryChip(
+                                        label: 'Produk Keluar',
+                                        value: expiredQty % 1 == 0
+                                            ? expiredQty.toInt().toString()
+                                            : expiredQty.toStringAsFixed(2),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
                           ),
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                    ],
-                    Card(
-                      child: Padding(
-                        padding: const EdgeInsets.all(16),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Laporan Persediaan Bulan ${_formatMonth(reportDate)}',
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .titleMedium
-                                  ?.copyWith(fontWeight: FontWeight.bold),
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              'Menampilkan stok saat ini berdasarkan inventaris.',
-                              style: Theme.of(context).textTheme.bodySmall,
-                            ),
-                            const SizedBox(height: 12),
-                            Wrap(
-                              spacing: 12,
-                              runSpacing: 8,
+                          const SizedBox(height: 16),
+                          Expanded(
+                            child: ListView(
                               children: [
-                                _buildSummaryChip(
-                                  label: 'Produk terdaftar',
-                                  value: inventoryProducts.length.toString(),
+                                // ── Produk Masuk ──
+                                if (incomingEntries.isNotEmpty)
+                                  Card(
+                                    child: Padding(
+                                      padding: const EdgeInsets.all(12),
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            'Produk Masuk Bulan ${_formatMonth(reportDate)}',
+                                            style: Theme.of(context)
+                                                .textTheme
+                                                .titleMedium,
+                                          ),
+                                          const SizedBox(height: 8),
+                                          SingleChildScrollView(
+                                            scrollDirection: Axis.horizontal,
+                                            child: DataTable(
+                                              columnSpacing: 12,
+                                              columns: const [
+                                                DataColumn(label: Text('No')),
+                                                DataColumn(label: Text('Nama')),
+                                                DataColumn(
+                                                    label: Text('Barcode')),
+                                                DataColumn(
+                                                    label: Text('Faktur (8)')),
+                                                DataColumn(
+                                                    label: Text('Jumlah')),
+                                                DataColumn(
+                                                    label: Text('Satuan')),
+                                                DataColumn(
+                                                    label: Text('Harga Beli')),
+                                                DataColumn(
+                                                    label: Text('Per Pcs/kg')),
+                                                DataColumn(
+                                                    label: Text('Subtotal')),
+                                              ],
+                                              rows: incomingEntries
+                                                  .asMap()
+                                                  .entries
+                                                  .map((entry) {
+                                                final idx = entry.key + 1;
+                                                final e = entry.value;
+                                                final prod =
+                                                    e['product'] as Barang;
+                                                final invoiceId =
+                                                    e['invoiceId'] as String;
+                                                final cost =
+                                                    e['costPrice'] as double;
+                                                final costPerUnit =
+                                                    (e['costPerUnit']
+                                                            as double?) ??
+                                                        0;
+                                                final qty =
+                                                    e['quantity'] as double;
+                                                final satuan =
+                                                    prod.measureType == 'weight'
+                                                        ? 'kg'
+                                                        : 'pcs';
+                                                final subtotal = cost * qty;
+                                                final invoiceDisplay =
+                                                    invoiceId.length > 8
+                                                        ? invoiceId.substring(
+                                                            0, 8)
+                                                        : invoiceId;
+                                                final costStr = formatIdr(cost);
+                                                final subtotalStr =
+                                                    formatIdr(subtotal);
+                                                return DataRow(cells: [
+                                                  DataCell(
+                                                      Text(idx.toString())),
+                                                  DataCell(SizedBox(
+                                                    width: 100,
+                                                    child: Text(prod.namaBarang,
+                                                        overflow: TextOverflow
+                                                            .ellipsis),
+                                                  )),
+                                                  DataCell(
+                                                      Text(prod.kodeBarang)),
+                                                  DataCell(
+                                                      Text(invoiceDisplay)),
+                                                  DataCell(Text(
+                                                      _formatQuantity(qty))),
+                                                  DataCell(Text(satuan)),
+                                                  DataCell(Text(costStr)),
+                                                  DataCell(Text(
+                                                      costPerUnit.toString())),
+                                                  DataCell(Text(subtotalStr)),
+                                                ]);
+                                              }).toList(),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+
+                                // ── Produk Keluar ──
+                                if (outgoingEntries.isNotEmpty)
+                                  Card(
+                                    child: Padding(
+                                      padding: const EdgeInsets.all(12),
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            'Produk Keluar Bulan ${_formatMonth(reportDate)}',
+                                            style: Theme.of(context)
+                                                .textTheme
+                                                .titleMedium,
+                                          ),
+                                          const SizedBox(height: 8),
+                                          SingleChildScrollView(
+                                            scrollDirection: Axis.horizontal,
+                                            child: DataTable(
+                                              columnSpacing: 12,
+                                              columns: const [
+                                                DataColumn(label: Text('No')),
+                                                DataColumn(label: Text('Nama')),
+                                                DataColumn(
+                                                    label: Text('Barcode')),
+                                                DataColumn(
+                                                    label:
+                                                        Text('ID Laporan (8)')),
+                                                DataColumn(
+                                                    label: Text('Jumlah')),
+                                                DataColumn(
+                                                    label: Text('Satuan')),
+                                                DataColumn(
+                                                    label: Text('Harga Beli')),
+                                                DataColumn(
+                                                    label: Text('Per Pcs/kg')),
+                                                DataColumn(
+                                                    label: Text('Subtotal')),
+                                              ],
+                                              rows: outgoingEntries
+                                                  .asMap()
+                                                  .entries
+                                                  .map((entry) {
+                                                final idx = entry.key + 1;
+                                                final e = entry.value;
+                                                final prod =
+                                                    e['product'] as Barang;
+                                                final invoiceId =
+                                                    (e['invoiceId'] as String);
+                                                final cost =
+                                                    e['costPrice'] as double;
+                                                final costPerUnit =
+                                                    (e['costPerUnit']
+                                                            as double?) ??
+                                                        0;
+                                                final qty =
+                                                    e['quantity'] as double;
+                                                final satuan =
+                                                    prod.measureType == 'weight'
+                                                        ? 'kg'
+                                                        : 'pcs';
+                                                final subtotal = cost * qty;
+                                                final invoiceDisplay = invoiceId
+                                                            .isNotEmpty &&
+                                                        invoiceId.length > 8
+                                                    ? invoiceId.substring(0, 8)
+                                                    : invoiceId;
+                                                final costStr = formatIdr(cost);
+                                                final subtotalStr =
+                                                    formatIdr(subtotal);
+                                                return DataRow(cells: [
+                                                  DataCell(
+                                                      Text(idx.toString())),
+                                                  DataCell(SizedBox(
+                                                    width: 100,
+                                                    child: Text(prod.namaBarang,
+                                                        overflow: TextOverflow
+                                                            .ellipsis),
+                                                  )),
+                                                  DataCell(
+                                                      Text(prod.kodeBarang)),
+                                                  DataCell(
+                                                      Text(invoiceDisplay)),
+                                                  DataCell(Text(
+                                                      _formatQuantity(qty))),
+                                                  DataCell(Text(satuan)),
+                                                  DataCell(Text(costStr)),
+                                                  DataCell(Text(
+                                                      costPerUnit.toString())),
+                                                  DataCell(Text(subtotalStr)),
+                                                ]);
+                                              }).toList(),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+
+                                // ── Persediaan Saat Ini ──
+                                Text(
+                                  'Persediaan Saat Ini',
+                                  style:
+                                      Theme.of(context).textTheme.titleMedium,
                                 ),
-                                _buildSummaryChip(
-                                  label: 'Total stok',
-                                  value: totalQty % 1 == 0
-                                      ? totalQty.toInt().toString()
-                                      : totalQty.toStringAsFixed(2),
+                                const SizedBox(height: 12),
+                                Container(
+                                  decoration: BoxDecoration(
+                                    border:
+                                        Border.all(color: Colors.grey.shade300),
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: SingleChildScrollView(
+                                    scrollDirection: Axis.horizontal,
+                                    child: DataTable(
+                                      columnSpacing: 12,
+                                      columns: const [
+                                        DataColumn(label: Text('No')),
+                                        DataColumn(label: Text('Barcode')),
+                                        DataColumn(label: Text('Produk')),
+                                        DataColumn(label: Text('Jumlah')),
+                                        DataColumn(label: Text('Satuan')),
+                                      ],
+                                      rows: inventoryProducts
+                                          .asMap()
+                                          .entries
+                                          .map((entry) {
+                                        final index = entry.key + 1;
+                                        final product = entry.value;
+                                        final totalQty =
+                                            _totalProductQuantity(product);
+                                        final satuan =
+                                            product.measureType == 'weight'
+                                                ? 'kg'
+                                                : 'pcs';
+                                        return DataRow(cells: [
+                                          DataCell(Text(index.toString())),
+                                          DataCell(Text(product.kodeBarang)),
+                                          DataCell(SizedBox(
+                                            width: 120,
+                                            child: Text(product.namaBarang,
+                                                overflow:
+                                                    TextOverflow.ellipsis),
+                                          )),
+                                          DataCell(
+                                              Text(_formatQuantity(totalQty))),
+                                          DataCell(Text(satuan)),
+                                        ]);
+                                      }).toList(),
+                                    ),
+                                  ),
                                 ),
-                                _buildSummaryChip(
-                                  label: 'Produk Masuk',
-                                  value: totalIncomingQty % 1 == 0
-                                      ? totalIncomingQty.toInt().toString()
-                                      : totalIncomingQty.toStringAsFixed(2),
+                                const SizedBox(height: 24),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          SizedBox(
+                            width: double.infinity,
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: ElevatedButton.icon(
+                                    onPressed: inventoryProducts.isEmpty
+                                        ? null
+                                        : () => _printInventoryReport(
+                                              context,
+                                              ref,
+                                              inventoryProducts,
+                                              shopData,
+                                            ),
+                                    icon: const Icon(Icons.print),
+                                    label: const Text('Cetak'),
+                                  ),
                                 ),
-                                _buildSummaryChip(
-                                  label: 'Produk Keluar',
-                                  value: expiredQty % 1 == 0
-                                      ? expiredQty.toInt().toString()
-                                      : expiredQty.toStringAsFixed(2),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: ElevatedButton.icon(
+                                    onPressed: inventoryProducts.isEmpty
+                                        ? null
+                                        : () async {
+                                            final now = DateTime.now();
+                                            final incomingEntries =
+                                                <Map<String, dynamic>>[];
+                                            for (final inv in invoiceHistory) {
+                                              if (inv.createdDate.year ==
+                                                      reportDate.year &&
+                                                  inv.createdDate.month ==
+                                                      reportDate.month) {
+                                                for (final item in inv.items) {
+                                                  incomingEntries.add({
+                                                    'product': item.product,
+                                                    'invoiceId': inv.id,
+                                                    'quantity': item.quantity,
+                                                    'subtotal': item.subtotal,
+                                                    'costPrice': item
+                                                            .costPrice ??
+                                                        item.product
+                                                            .latestCostPrice ??
+                                                        item.product
+                                                            .hargaSatuan,
+                                                    'costPerUnit': item
+                                                            .costPerUnit ??
+                                                        item.product
+                                                            .latestCostPerUnit,
+                                                  });
+                                                }
+                                              }
+                                            }
+                                            final outgoingEntries =
+                                                <Map<String, dynamic>>[];
+                                            final products = ref
+                                                .read(product_provider
+                                                    .productNotifierProvider)
+                                                .products;
+                                            for (final p in products) {
+                                              if (p.batches != null) {
+                                                for (final b in p.batches!) {
+                                                  if (b.expirationDate.year ==
+                                                          reportDate.year &&
+                                                      b.expirationDate.month ==
+                                                          reportDate.month) {
+                                                    outgoingEntries.add({
+                                                      'product': p,
+                                                      'batch': b,
+                                                      'invoiceId':
+                                                          b.invoiceId ?? '',
+                                                      'kode': b.id,
+                                                      'quantity': b.quantity,
+                                                      'costPrice': b
+                                                              .costPrice ??
+                                                          p.latestCostPrice ??
+                                                          p.hargaSatuan,
+                                                      'costPerUnit': b
+                                                              .costPerUnit ??
+                                                          p.latestCostPerUnit ??
+                                                          0,
+                                                    });
+                                                  }
+                                                }
+                                              }
+                                            }
+                                            final pdfBytes =
+                                                await _buildReportPdf(
+                                              inventoryProducts,
+                                              now,
+                                              title,
+                                              shopData,
+                                              incomingEntries,
+                                              outgoingEntries,
+                                            );
+                                            await Printing.sharePdf(
+                                              bytes: pdfBytes,
+                                              filename:
+                                                  'laporan_persediaan_${reportDate.year}_${reportDate.month}.pdf',
+                                            );
+                                          },
+                                    icon: const Icon(Icons.download),
+                                    label: const Text('Ekspor PDF'),
+                                  ),
                                 ),
                               ],
                             ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    Expanded(
-                      child: ListView(
-                        children: [
-                          // ── Produk Masuk ──
-                          if (incomingEntries.isNotEmpty)
-                            Card(
-                              child: Padding(
-                                padding: const EdgeInsets.all(12),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      'Produk Masuk Bulan ${_formatMonth(reportDate)}',
-                                      style: Theme.of(context)
-                                          .textTheme
-                                          .titleMedium,
-                                    ),
-                                    const SizedBox(height: 8),
-                                    SingleChildScrollView(
-                                      scrollDirection: Axis.horizontal,
-                                      child: DataTable(
-                                        columnSpacing: 12,
-                                        columns: const [
-                                          DataColumn(label: Text('No')),
-                                          DataColumn(label: Text('Nama')),
-                                          DataColumn(label: Text('Barcode')),
-                                          DataColumn(label: Text('Faktur (8)')),
-                                          DataColumn(label: Text('Jumlah')),
-                                          DataColumn(label: Text('Satuan')),
-                                          DataColumn(label: Text('Harga Beli')),
-                                          DataColumn(label: Text('Per Pcs/kg')),
-                                          DataColumn(label: Text('Subtotal')),
-                                        ],
-                                        rows: incomingEntries
-                                            .asMap()
-                                            .entries
-                                            .map((entry) {
-                                          final idx = entry.key + 1;
-                                          final e = entry.value;
-                                          final prod = e['product'] as Barang;
-                                          final invoiceId =
-                                              e['invoiceId'] as String;
-                                          final cost = e['costPrice'] as double;
-                                          final costPerUnit =
-                                              (e['costPerUnit'] as double?) ??
-                                                  0;
-                                          final qty = e['quantity'] as double;
-                                          final satuan =
-                                              prod.measureType == 'weight'
-                                                  ? 'kg'
-                                                  : 'pcs';
-                                          final subtotal = cost * qty;
-                                          final invoiceDisplay =
-                                              invoiceId.length > 8
-                                                  ? invoiceId.substring(0, 8)
-                                                  : invoiceId;
-                                          final costStr = formatIdr(cost);
-                                          final subtotalStr =
-                                              formatIdr(subtotal);
-                                          return DataRow(cells: [
-                                            DataCell(Text(idx.toString())),
-                                            DataCell(SizedBox(
-                                              width: 100,
-                                              child: Text(prod.namaBarang,
-                                                  overflow:
-                                                      TextOverflow.ellipsis),
-                                            )),
-                                            DataCell(Text(prod.kodeBarang)),
-                                            DataCell(Text(invoiceDisplay)),
-                                            DataCell(
-                                                Text(_formatQuantity(qty))),
-                                            DataCell(Text(satuan)),
-                                            DataCell(Text(costStr)),
-                                            DataCell(
-                                                Text(costPerUnit.toString())),
-                                            DataCell(Text(subtotalStr)),
-                                          ]);
-                                        }).toList(),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-
-                          // ── Produk Keluar ──
-                          if (outgoingEntries.isNotEmpty)
-                            Card(
-                              child: Padding(
-                                padding: const EdgeInsets.all(12),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      'Produk Keluar Bulan ${_formatMonth(reportDate)}',
-                                      style: Theme.of(context)
-                                          .textTheme
-                                          .titleMedium,
-                                    ),
-                                    const SizedBox(height: 8),
-                                    SingleChildScrollView(
-                                      scrollDirection: Axis.horizontal,
-                                      child: DataTable(
-                                        columnSpacing: 12,
-                                        columns: const [
-                                          DataColumn(label: Text('No')),
-                                          DataColumn(label: Text('Nama')),
-                                          DataColumn(label: Text('Barcode')),
-                                          DataColumn(
-                                              label: Text('ID Laporan (8)')),
-                                          DataColumn(label: Text('Jumlah')),
-                                          DataColumn(label: Text('Satuan')),
-                                          DataColumn(label: Text('Harga Beli')),
-                                          DataColumn(label: Text('Per Pcs/kg')),
-                                          DataColumn(label: Text('Subtotal')),
-                                        ],
-                                        rows: outgoingEntries
-                                            .asMap()
-                                            .entries
-                                            .map((entry) {
-                                          final idx = entry.key + 1;
-                                          final e = entry.value;
-                                          final prod = e['product'] as Barang;
-                                          final invoiceId =
-                                              (e['invoiceId'] as String);
-                                          final cost = e['costPrice'] as double;
-                                          final costPerUnit =
-                                              (e['costPerUnit'] as double?) ??
-                                                  0;
-                                          final qty = e['quantity'] as double;
-                                          final satuan =
-                                              prod.measureType == 'weight'
-                                                  ? 'kg'
-                                                  : 'pcs';
-                                          final subtotal = cost * qty;
-                                          final invoiceDisplay =
-                                              invoiceId.isNotEmpty &&
-                                                      invoiceId.length > 8
-                                                  ? invoiceId.substring(0, 8)
-                                                  : invoiceId;
-                                          final costStr = formatIdr(cost);
-                                          final subtotalStr =
-                                              formatIdr(subtotal);
-                                          return DataRow(cells: [
-                                            DataCell(Text(idx.toString())),
-                                            DataCell(SizedBox(
-                                              width: 100,
-                                              child: Text(prod.namaBarang,
-                                                  overflow:
-                                                      TextOverflow.ellipsis),
-                                            )),
-                                            DataCell(Text(prod.kodeBarang)),
-                                            DataCell(Text(invoiceDisplay)),
-                                            DataCell(
-                                                Text(_formatQuantity(qty))),
-                                            DataCell(Text(satuan)),
-                                            DataCell(Text(costStr)),
-                                            DataCell(
-                                                Text(costPerUnit.toString())),
-                                            DataCell(Text(subtotalStr)),
-                                          ]);
-                                        }).toList(),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-
-                          // ── Persediaan Saat Ini ──
-                          Text(
-                            'Persediaan Saat Ini',
-                            style: Theme.of(context).textTheme.titleMedium,
-                          ),
-                          const SizedBox(height: 12),
-                          Container(
-                            decoration: BoxDecoration(
-                              border: Border.all(color: Colors.grey.shade300),
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: SingleChildScrollView(
-                              scrollDirection: Axis.horizontal,
-                              child: DataTable(
-                                columnSpacing: 12,
-                                columns: const [
-                                  DataColumn(label: Text('No')),
-                                  DataColumn(label: Text('Barcode')),
-                                  DataColumn(label: Text('Produk')),
-                                  DataColumn(label: Text('Jumlah')),
-                                  DataColumn(label: Text('Satuan')),
-                                ],
-                                rows: inventoryProducts
-                                    .asMap()
-                                    .entries
-                                    .map((entry) {
-                                  final index = entry.key + 1;
-                                  final product = entry.value;
-                                  final totalQty =
-                                      _totalProductQuantity(product);
-                                  final satuan = product.measureType == 'weight'
-                                      ? 'kg'
-                                      : 'pcs';
-                                  return DataRow(cells: [
-                                    DataCell(Text(index.toString())),
-                                    DataCell(Text(product.kodeBarang)),
-                                    DataCell(SizedBox(
-                                      width: 120,
-                                      child: Text(product.namaBarang,
-                                          overflow: TextOverflow.ellipsis),
-                                    )),
-                                    DataCell(Text(_formatQuantity(totalQty))),
-                                    DataCell(Text(satuan)),
-                                  ]);
-                                }).toList(),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 24),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    SizedBox(
-                      width: double.infinity,
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: ElevatedButton.icon(
-                              onPressed: inventoryProducts.isEmpty
-                                  ? null
-                                  : () => _printInventoryReport(
-                                        context,
-                                        ref,
-                                        inventoryProducts,
-                                        shopData,
-                                      ),
-                              icon: const Icon(Icons.print),
-                              label: const Text('Cetak'),
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: ElevatedButton.icon(
-                              onPressed: inventoryProducts.isEmpty
-                                  ? null
-                                  : () async {
-                                      final now = DateTime.now();
-                                      final inventoryState =
-                                          ref.read(inventoryNotifierProvider);
-                                      final incomingEntries =
-                                          <Map<String, dynamic>>[];
-                                      for (final inv
-                                          in inventoryState.invoiceHistory) {
-                                        if (inv.createdDate.year ==
-                                                reportDate.year &&
-                                            inv.createdDate.month ==
-                                                reportDate.month) {
-                                          for (final item in inv.items) {
-                                            incomingEntries.add({
-                                              'product': item.product,
-                                              'invoiceId': inv.id,
-                                              'quantity': item.quantity,
-                                              'subtotal': item.subtotal,
-                                              'costPrice': item.costPrice ??
-                                                  item.product
-                                                      .latestCostPrice ??
-                                                  item.product.hargaSatuan,
-                                              'costPerUnit': item.costPerUnit ??
-                                                  item.product
-                                                      .latestCostPerUnit,
-                                            });
-                                          }
-                                        }
-                                      }
-                                      final outgoingEntries =
-                                          <Map<String, dynamic>>[];
-                                      final products = ref
-                                          .read(product_provider
-                                              .productNotifierProvider)
-                                          .products;
-                                      for (final p in products) {
-                                        if (p.batches != null) {
-                                          for (final b in p.batches!) {
-                                            if (b.expirationDate.year ==
-                                                    reportDate.year &&
-                                                b.expirationDate.month ==
-                                                    reportDate.month) {
-                                              outgoingEntries.add({
-                                                'product': p,
-                                                'batch': b,
-                                                'invoiceId': b.invoiceId ?? '',
-                                                'kode': b.id,
-                                                'quantity': b.quantity,
-                                                'costPrice': b.costPrice ??
-                                                    p.latestCostPrice ??
-                                                    p.hargaSatuan,
-                                                'costPerUnit': b.costPerUnit ??
-                                                    p.latestCostPerUnit ??
-                                                    0,
-                                              });
-                                            }
-                                          }
-                                        }
-                                      }
-                                      final pdfBytes = await _buildReportPdf(
-                                        inventoryProducts,
-                                        now,
-                                        title,
-                                        shopData,
-                                        incomingEntries,
-                                        outgoingEntries,
-                                      );
-                                      await Printing.sharePdf(
-                                        bytes: pdfBytes,
-                                        filename:
-                                            'laporan_persediaan_${reportDate.year}_${reportDate.month}.pdf',
-                                      );
-                                    },
-                              icon: const Icon(Icons.download),
-                              label: const Text('Ekspor PDF'),
-                            ),
                           ),
                         ],
                       ),
-                    ),
-                  ],
+                    );
+                  },
+                ),
+                loading: () => const Center(
+                  child: CircularProgressIndicator(),
+                ),
+                error: (error, stack) => Center(
+                  child: Text('Error: ${error.toString()}'),
                 ),
               );
-            },
-          );
-        }),
-      ),
-    );
+        })));
   }
+}
 
-  Widget _buildSummaryChip({
-    required String label,
-    required String value,
-  }) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(
-        color: Colors.grey.shade100,
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(label,
-              style: const TextStyle(fontSize: 12, color: Colors.black54)),
-          const SizedBox(height: 4),
-          Text(value, style: const TextStyle(fontWeight: FontWeight.bold)),
-        ],
-      ),
-    );
-  }
+Widget _buildSummaryChip({
+  required String label,
+  required String value,
+}) {
+  return Container(
+    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+    decoration: BoxDecoration(
+      color: Colors.grey.shade100,
+      borderRadius: BorderRadius.circular(16),
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label,
+            style: const TextStyle(fontSize: 12, color: Colors.black54)),
+        const SizedBox(height: 4),
+        Text(value, style: const TextStyle(fontWeight: FontWeight.bold)),
+      ],
+    ),
+  );
 }
