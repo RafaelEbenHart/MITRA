@@ -25,6 +25,23 @@ class InventoryReportDetailPage extends ConsumerWidget {
     required this.title,
   });
 
+  /// Simple retry untuk handle auth delay di fresh install
+  void _retryLoadProductsIfNeeded(WidgetRef ref, int attempt) {
+    if (attempt >= 3) return; // Max 3 attempts
+
+    Future.delayed(Duration(milliseconds: 500 * (attempt + 1)), () {
+      final state = ref.read(product_provider.productNotifierProvider);
+      // Jika masih kosong, retry
+      if (state.products.isEmpty &&
+          state.status != product_provider.ProductStatus.loading) {
+        ref
+            .read(product_provider.productNotifierProvider.notifier)
+            .loadProducts();
+        _retryLoadProductsIfNeeded(ref, attempt + 1);
+      }
+    });
+  }
+
   String _formatDate(DateTime date) {
     final day = date.day.toString().padLeft(2, '0');
     final month = date.month.toString().padLeft(2, '0');
@@ -486,6 +503,15 @@ class InventoryReportDetailPage extends ConsumerWidget {
             });
           }
 
+          // If products empty after load, trigger retry (fresh install auth delay)
+          if ((state.status == product_provider.ProductStatus.loaded ||
+                  state.status == product_provider.ProductStatus.success) &&
+              state.products.isEmpty) {
+            Future.microtask(() => _retryLoadProductsIfNeeded(ref, 0));
+            // Show loading while retrying
+            return const Center(child: CircularProgressIndicator());
+          }
+
           if (state.status == product_provider.ProductStatus.loading) {
             return const Center(child: CircularProgressIndicator());
           }
@@ -494,6 +520,11 @@ class InventoryReportDetailPage extends ConsumerWidget {
             return Center(
               child: Text(state.message ?? 'Gagal memuat data produk'),
             );
+          }
+
+          // Show loading if products still empty (shouldn't happen, but safety)
+          if (state.products.isEmpty) {
+            return const Center(child: CircularProgressIndicator());
           }
 
           final products = state.products;
