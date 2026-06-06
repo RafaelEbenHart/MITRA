@@ -253,14 +253,6 @@ class PrinterHelper {
     bytes += EscPos.boldOff;
     bytes += EscPos.lineFeed;
 
-    // Kasir
-    if (createdBy.isNotEmpty) {
-      bytes += EscPos.alignLeft;
-      bytes += _textToBytes('Kasir: $createdBy');
-      bytes += EscPos.lineFeed;
-      bytes += EscPos.lineFeed;
-    }
-
     // Footer
     bytes += EscPos.alignCenter;
     bytes += _textToBytes(footer);

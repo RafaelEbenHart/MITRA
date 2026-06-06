@@ -810,15 +810,6 @@ class _AddStockPageState extends ConsumerState<AddStockPage> {
                   final normalizedQtyText = qtyText.replaceAll(',', '.');
                   final qty = double.tryParse(normalizedQtyText);
 
-                  if (ref.read(inventoryNotifierProvider).searchedProduct ==
-                      null) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                          content: Text('Pilih produk terlebih dahulu')),
-                    );
-                    return;
-                  }
-
                   if (qty == null || qty <= 0) {
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(
